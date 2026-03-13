@@ -7,16 +7,31 @@ type IndexEntry = {
     metadata?: Record<string, string>;
 };
 
+type PressReleaseFile = {
+    url: string;
+    file_name: string;
+};
+
+type PressRelease = {
+    press_id: number;
+    title: string;
+    publication_date: string;
+    source_url: string;
+    full_text: string;
+    files: PressReleaseFile[];
+};
+
 type GlobalIndex = {
     ciaa_annual_reports?: IndexEntry[];
     kanun_patrika?: IndexEntry[];
+    ciaa_press_releases?: PressRelease[];
 };
 
 export default function IndexViewer() {
     const [data, setData] = useState<GlobalIndex | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'ciaa' | 'kanun'>('kanun');
+    const [activeTab, setActiveTab] = useState<'ciaa' | 'kanun' | 'press'>('kanun');
 
     useEffect(() => {
         fetch('https://ngm-store.newnepal.org/index.json')
@@ -101,6 +116,68 @@ export default function IndexViewer() {
         );
     };
 
+    const renderPressReleases = () => {
+        const items = data?.ciaa_press_releases || [];
+        if (items.length === 0) return <p className="empty-state">No records found for CIAA Press Releases.</p>;
+
+        const getFileChipClass = (ext: string): string => {
+            if (ext === 'PDF') return 'pdf';
+            if (ext === 'DOC' || ext === 'DOCX') return 'doc';
+            return 'default';
+        };
+
+        const extractFileExtension = (fileName: string): string => {
+            const trimmed = fileName.trim();
+            const match = trimmed.match(/\.([A-Za-z0-9]+)$/);
+            return match ? match[1].toUpperCase() : 'FILE';
+        };
+
+        return (
+            <div className="list-view fade-in">
+                {items.map((item) => {
+                    const files = Array.isArray(item.files) ? item.files : [];
+                    return (
+                        <div key={item.press_id} className="list-item">
+                            <div className="list-icon">📰</div>
+                            <div className="list-content">
+                                <h3>{item.title}</h3>
+                                <div className="list-meta">
+                                    <span className="meta-text">No. {item.press_id}</span>
+                                    {item.publication_date && (
+                                        <>
+                                            <span className="meta-text divider">•</span>
+                                            <span className="meta-text">{item.publication_date}</span>
+                                        </>
+                                    )}
+                                </div>
+                                {files.length > 0 && (
+                                    <div className="pr-files">
+                                        {files.map((file, i) => {
+                                            const ext = extractFileExtension(file.file_name);
+                                            const match = file.file_name.trim().match(/ - (\d+)\.\w+$/);
+                                            const num = match ? match[1] : i + 1;
+                                            return (
+                                                <a 
+                                                    href={file.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    key={`${item.press_id}-${file.file_name}-${i}`}
+                                                    className={`file-chip ${getFileChipClass(ext)}`}
+                                                >
+                                                    {ext} · File {num}
+                                                </a>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
     return (
         <div className="index-viewer">
             <div className="tabs slide-down">
@@ -116,10 +193,18 @@ export default function IndexViewer() {
                 >
                     CIAA Annual Reports
                 </button>
+                <button
+                    className={`tab-btn ${activeTab === 'press' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('press')}
+                >
+                    CIAA Press Releases
+                </button>
             </div>
 
             <div className="content-area">
-                {activeTab === 'kanun' ? renderKanunPatrika() : renderCiaaReports()}
+                {activeTab === 'kanun' && renderKanunPatrika()}
+                {activeTab === 'ciaa' && renderCiaaReports()}
+                {activeTab === 'press' && renderPressReleases()}
             </div>
         </div>
     );
