@@ -137,27 +137,29 @@ export default function IndexViewer() {
                                     </>
                                 )}
                             </div>
-                            <div className="file-links">
-                                {item.files.map((file, fileIdx) => {
-                                    // Extract file extension
-                                    const ext = file.file_name.split('.').pop()?.toUpperCase() || 'FILE';
-                                    // Get file number from "- N.ext" pattern
-                                    const match = file.file_name.match(/ - (\d+)\.\w+$/);
-                                    const fileNum = match ? match[1] : fileIdx + 1;
-                                    
-                                    return (
-                                        <a 
-                                            href={file.url} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer" 
-                                            key={fileIdx}
-                                            className="file-link"
-                                        >
-                                            📄 File {fileNum} ({ext})
-                                        </a>
-                                    );
-                                })}
-                            </div>
+                            {Array.isArray(item.files) && item.files.length > 0 && (
+                                <div className="file-links">
+                                    {item.files.map((file, fileIdx) => {
+                                        // Extract file extension
+                                        const ext = file.file_name.split('.').pop()?.toUpperCase() || 'FILE';
+                                        // Get file number from "- N.ext" pattern
+                                        const match = file.file_name.match(/ - (\d+)\.\w+$/);
+                                        const fileNum = match ? match[1] : fileIdx + 1;
+                                        
+                                        return (
+                                            <a 
+                                                href={file.url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                key={`${item.press_id}-${file.file_name}-${fileIdx}`}
+                                                className="file-link"
+                                            >
+                                                📄 File {fileNum} ({ext})
+                                            </a>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
