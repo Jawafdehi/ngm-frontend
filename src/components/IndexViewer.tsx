@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // NGM Index v2.0 types - Tree-based hierarchical index
 type Manuscript = {
@@ -28,12 +28,30 @@ type RootIndex = {
 };
 
 /** Fetch all manuscripts for a node, following pagination via `next` links. */
-async function fetchAllManuscripts(ref: string): Promise<Manuscript[]> {
+async function fetchAllManuscripts(ref: string, signal?: AbortSignal): Promise<Manuscript[]> {
     const manuscripts: Manuscript[] = [];
     let url: string | undefined = ref;
+    const visitedUrls = new Set<string>();
+    let pageCount = 0;
+    const maxPages = 100; // Safety limit
 
     while (url) {
-        const res = await fetch(url);
+        if (signal?.aborted) {
+            throw new Error('Request was cancelled');
+        }
+
+        if (visitedUrls.has(url)) {
+            throw new Error(`Circular reference detected: ${url}`);
+        }
+
+        if (pageCount >= maxPages) {
+            throw new Error(`Maximum page limit (${maxPages}) exceeded`);
+        }
+
+        visitedUrls.add(url);
+        pageCount++;
+
+        const res = await fetch(url, { signal });
         if (!res.ok) throw new Error(`Failed to fetch ${url}`);
         const node: IndexNodeFull = await res.json();
         if (node.manuscripts) manuscripts.push(...node.manuscripts);
@@ -58,20 +76,25 @@ export default function IndexViewer() {
     const [rootLoading, setRootLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<TabKey>('kanun');
+    const loadingRef = useRef<Set<TabKey>>(new Set());
 
     // Load root index once
     useEffect(() => {
+        const controller = new AbortController();
+        
         // Use local development server if available, fallback to production
         const indexUrl = import.meta.env.DEV 
             ? 'http://localhost:8001/index-v2.json'
             : 'https://ngm-store.newnepal.org/index-v2.json';
             
-        fetch(indexUrl)
+        fetch(indexUrl, { signal: controller.signal })
             .then((res) => {
                 if (!res.ok) throw new Error('Failed to fetch the NGM Index v2');
                 return res.json() as Promise<RootIndex>;
             })
             .then((root) => {
+                if (controller.signal.aborted) return;
+                
                 const refs: Record<TabKey, string | null> = { kanun: null, ciaa: null, press: null };
                 for (const child of root.children) {
                     const tab = NODE_NAMES[child.name as keyof typeof NODE_NAMES];
@@ -81,36 +104,35 @@ export default function IndexViewer() {
                 setRootLoading(false);
             })
             .catch((err) => {
+                if (controller.signal.aborted || err.name === 'AbortError') return;
+                
                 setError(err.message || 'An unknown error occurred.');
                 setRootLoading(false);
             });
+
+        return () => controller.abort();
     }, []);
 
     // Lazy-load manuscripts when a tab is first activated
     const loadTab = useCallback(async (tab: TabKey) => {
         const ref = stubs[tab];
-        if (!ref) return;
+        if (!ref || manuscripts[tab] !== null || loadingRef.current.has(tab)) return;
 
-        // Check if already loaded
-        let alreadyLoaded = false;
-        setManuscripts((prev) => {
-            alreadyLoaded = prev[tab] !== null;
-            return prev;
-        });
-
-        if (alreadyLoaded) return;
-
+        loadingRef.current.add(tab);
         setTabLoading((prev) => ({ ...prev, [tab]: true }));
+        
         try {
-            const items = await fetchAllManuscripts(ref);
+            const controller = new AbortController();
+            const items = await fetchAllManuscripts(ref, controller.signal);
             setManuscripts((prev) => ({ ...prev, [tab]: items }));
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : 'Failed to load data';
             setError(msg);
         } finally {
+            loadingRef.current.delete(tab);
             setTabLoading((prev) => ({ ...prev, [tab]: false }));
         }
-    }, [stubs]);
+    }, [stubs, manuscripts]);
 
     useEffect(() => {
         if (!rootLoading) loadTab(activeTab);
@@ -173,15 +195,28 @@ export default function IndexViewer() {
 
         // Sort by date (newest first) - try multiple date fields
         const sortedItems = [...items].sort((a, b) => {
-            const aDate = a.metadata?.date || a.metadata?.year || a.file_name;
-            const bDate = b.metadata?.date || b.metadata?.year || b.file_name;
+            const rawDateA = a.metadata?.date ?? a.metadata?.year ?? null;
+            const rawDateB = b.metadata?.date ?? b.metadata?.year ?? null;
             
-            // If we have actual dates, compare them
-            if (aDate && bDate) {
-                return String(bDate).localeCompare(String(aDate));
+            // If both have dates, compare them
+            if (rawDateA && rawDateB) {
+                const dateA = new Date(String(rawDateA));
+                const dateB = new Date(String(rawDateB));
+                
+                // If both are valid dates, compare numerically
+                if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+                    return dateB.getTime() - dateA.getTime(); // Newest first
+                }
+                
+                // Fallback to string comparison
+                return String(rawDateB).localeCompare(String(rawDateA));
             }
             
-            // Fallback to filename comparison (reverse alphabetical for newer first)
+            // If only one has a date, prioritize the dated item
+            if (rawDateA && !rawDateB) return -1;
+            if (!rawDateA && rawDateB) return 1;
+            
+            // If neither has a date, fallback to filename comparison (reverse alphabetical)
             return b.file_name.localeCompare(a.file_name);
         });
 
@@ -228,7 +263,7 @@ export default function IndexViewer() {
         // Group manuscripts by press_id since each file is now its own Manuscript entry
         const grouped = new Map<number, { meta: Record<string, unknown>; files: Manuscript[] }>();
         for (const item of items) {
-            const pressId = (item.metadata?.press_id as number) ?? 0;
+            const pressId = Number(item.metadata?.press_id) || 0;
             if (!grouped.has(pressId)) {
                 grouped.set(pressId, { meta: item.metadata, files: [] });
             }
