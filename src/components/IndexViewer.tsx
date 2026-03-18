@@ -1,55 +1,122 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-// Using standard structure defined in ngm implementation plan
-type IndexEntry = {
+// NGM Index v2.0 types - Tree-based hierarchical index
+type Manuscript = {
     url: string;
     file_name: string;
-    metadata?: Record<string, string>;
+    metadata: Record<string, unknown>;
 };
 
-type PressReleaseFile = {
-    url: string;
-    file_name: string;
+type IndexNodeStub = {
+    name: string;
+    path: string;
+    $ref: string;
 };
 
-type PressRelease = {
-    press_id: number;
-    title: string;
-    publication_date: string;
-    source_url: string;
-    full_text: string;
-    files: PressReleaseFile[];
+type IndexNodeFull = {
+    name: string;
+    path: string;
+    manuscripts?: Manuscript[];
+    children?: IndexNodeStub[];
+    next?: string; // Pagination link
 };
 
-type GlobalIndex = {
-    ciaa_annual_reports?: IndexEntry[];
-    kanun_patrika?: IndexEntry[];
-    ciaa_press_releases?: PressRelease[];
+type RootIndex = {
+    name: 'root';
+    path: '/';
+    children: IndexNodeStub[];
 };
+
+/** Fetch all manuscripts for a node, following pagination via `next` links. */
+async function fetchAllManuscripts(ref: string): Promise<Manuscript[]> {
+    const manuscripts: Manuscript[] = [];
+    let url: string | undefined = ref;
+
+    while (url) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+        const node: IndexNodeFull = await res.json();
+        if (node.manuscripts) manuscripts.push(...node.manuscripts);
+        url = node.next;
+    }
+
+    return manuscripts;
+}
+
+const NODE_NAMES = {
+    'kanun-patrika': 'kanun',
+    'ciaa-annual-reports': 'ciaa',
+    'ciaa-press-releases': 'press',
+} as const;
+
+type TabKey = 'kanun' | 'ciaa' | 'press';
 
 export default function IndexViewer() {
-    const [data, setData] = useState<GlobalIndex | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [stubs, setStubs] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null });
+    const [manuscripts, setManuscripts] = useState<Record<TabKey, Manuscript[] | null>>({ kanun: null, ciaa: null, press: null });
+    const [tabLoading, setTabLoading] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false });
+    const [rootLoading, setRootLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'ciaa' | 'kanun' | 'press'>('kanun');
+    const [activeTab, setActiveTab] = useState<TabKey>('kanun');
 
+    // Load root index once
     useEffect(() => {
-        fetch('https://ngm-store.newnepal.org/index.json')
+        // Use local development server if available, fallback to production
+        const indexUrl = import.meta.env.DEV 
+            ? 'http://localhost:8001/index-v2.json'
+            : 'https://ngm-store.newnepal.org/index-v2.json';
+            
+        fetch(indexUrl)
             .then((res) => {
-                if (!res.ok) throw new Error('Failed to fetch the NGM Index');
-                return res.json();
+                if (!res.ok) throw new Error('Failed to fetch the NGM Index v2');
+                return res.json() as Promise<RootIndex>;
             })
-            .then((json: GlobalIndex) => {
-                setData(json);
-                setLoading(false);
+            .then((root) => {
+                const refs: Record<TabKey, string | null> = { kanun: null, ciaa: null, press: null };
+                for (const child of root.children) {
+                    const tab = NODE_NAMES[child.name as keyof typeof NODE_NAMES];
+                    if (tab) refs[tab] = child.$ref;
+                }
+                setStubs(refs);
+                setRootLoading(false);
             })
             .catch((err) => {
                 setError(err.message || 'An unknown error occurred.');
-                setLoading(false);
+                setRootLoading(false);
             });
     }, []);
 
-    if (loading) {
+    // Lazy-load manuscripts when a tab is first activated
+    const loadTab = useCallback(async (tab: TabKey) => {
+        const ref = stubs[tab];
+        if (!ref) return;
+
+        // Check if already loaded
+        let alreadyLoaded = false;
+        setManuscripts((prev) => {
+            alreadyLoaded = prev[tab] !== null;
+            return prev;
+        });
+
+        if (alreadyLoaded) return;
+
+        setTabLoading((prev) => ({ ...prev, [tab]: true }));
+        try {
+            const items = await fetchAllManuscripts(ref);
+            setManuscripts((prev) => ({ ...prev, [tab]: items }));
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Failed to load data';
+            setError(msg);
+        } finally {
+            setTabLoading((prev) => ({ ...prev, [tab]: false }));
+        }
+    }, [stubs]);
+
+    useEffect(() => {
+        if (!rootLoading) loadTab(activeTab);
+    }, [activeTab, rootLoading, loadTab]);
+
+    if (rootLoading) {
         return (
             <div className="state-container bounce-in">
                 <div className="spinner"></div>
@@ -69,14 +136,22 @@ export default function IndexViewer() {
         );
     }
 
+    const renderLoading = () => (
+        <div className="state-container bounce-in">
+            <div className="spinner"></div>
+            <p>Loading...</p>
+        </div>
+    );
+
     const renderKanunPatrika = () => {
-        const items = data?.kanun_patrika || [];
+        if (tabLoading.kanun) return renderLoading();
+        const items = manuscripts.kanun || [];
         if (items.length === 0) return <p className="empty-state">No records found for Kanun Patrika.</p>;
 
         return (
             <div className="list-view fade-in">
-                {items.map((item, idx) => (
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" key={idx} className="list-item interactive">
+                {items.map((item) => (
+                    <a href={item.url} target="_blank" rel="noopener noreferrer" key={item.url} className="list-item interactive">
                         <div className="list-icon">🏛️</div>
                         <div className="list-content">
                             <h3>{item.file_name.replace('.pdf', '')}</h3>
@@ -92,33 +167,57 @@ export default function IndexViewer() {
     };
 
     const renderCiaaReports = () => {
-        const items = data?.ciaa_annual_reports || [];
+        if (tabLoading.ciaa) return renderLoading();
+        const items = manuscripts.ciaa || [];
         if (items.length === 0) return <p className="empty-state">No records found for CIAA Annual Reports.</p>;
+
+        // Sort by date (newest first) - try multiple date fields
+        const sortedItems = [...items].sort((a, b) => {
+            const aDate = a.metadata?.date || a.metadata?.year || a.file_name;
+            const bDate = b.metadata?.date || b.metadata?.year || b.file_name;
+            
+            // If we have actual dates, compare them
+            if (aDate && bDate) {
+                return String(bDate).localeCompare(String(aDate));
+            }
+            
+            // Fallback to filename comparison (reverse alphabetical for newer first)
+            return b.file_name.localeCompare(a.file_name);
+        });
 
         return (
             <div className="list-view fade-in">
-                {items.map((item, idx) => (
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" key={idx} className="list-item interactive">
-                        <div className="list-icon">⚖️</div>
-                        <div className="list-content">
-                            <h3>{item.metadata?.title || item.file_name}</h3>
-                            <div className="list-meta">
-                                <span className="badge warning">CIAA</span>
-                                <span className="meta-text">No. {item.metadata?.serial_number || 'N/A'}</span>
-                                <span className="meta-text divider">•</span>
-                                <span className="meta-text">{item.metadata?.date || 'Unknown Date'}</span>
+                {sortedItems.map((item) => {
+                    const meta = item.metadata as Record<string, string>;
+                    return (
+                        <a href={item.url} target="_blank" rel="noopener noreferrer" key={item.url} className="list-item interactive">
+                            <div className="list-icon">⚖️</div>
+                            <div className="list-content">
+                                <h3>{meta?.title || item.file_name}</h3>
+                                <div className="list-meta">
+                                    <span className="badge warning">CIAA</span>
+                                    <span className="meta-text">No. {meta?.serial_number || 'N/A'}</span>
+                                    <span className="meta-text divider">•</span>
+                                    <span className="meta-text">{meta?.date || 'Unknown Date'}</span>
+                                </div>
                             </div>
-                        </div>
-                        <div className="list-action">→</div>
-                    </a>
-                ))}
+                            <div className="list-action">→</div>
+                        </a>
+                    );
+                })}
             </div>
         );
     };
 
     const renderPressReleases = () => {
-        const items = data?.ciaa_press_releases || [];
+        if (tabLoading.press) return renderLoading();
+        const items = manuscripts.press || [];
         if (items.length === 0) return <p className="empty-state">No records found for CIAA Press Releases.</p>;
+
+        const extractFileExtension = (fileName: string): string => {
+            const match = fileName.trim().match(/\.([A-Za-z0-9]+)$/);
+            return match ? match[1].toUpperCase() : 'FILE';
+        };
 
         const getFileChipClass = (ext: string): string => {
             if (ext === 'PDF') return 'pdf';
@@ -126,30 +225,36 @@ export default function IndexViewer() {
             return 'default';
         };
 
-        const extractFileExtension = (fileName: string): string => {
-            const trimmed = fileName.trim();
-            const match = trimmed.match(/\.([A-Za-z0-9]+)$/);
-            return match ? match[1].toUpperCase() : 'FILE';
-        };
+        // Group manuscripts by press_id since each file is now its own Manuscript entry
+        const grouped = new Map<number, { meta: Record<string, unknown>; files: Manuscript[] }>();
+        for (const item of items) {
+            const pressId = (item.metadata?.press_id as number) ?? 0;
+            if (!grouped.has(pressId)) {
+                grouped.set(pressId, { meta: item.metadata, files: [] });
+            }
+            grouped.get(pressId)!.files.push(item);
+        }
 
         return (
             <div className="list-view fade-in">
-                {items.map((item) => {
-                    const files = Array.isArray(item.files) ? item.files : [];
+                {[...grouped.entries()]
+                    .sort(([a], [b]) => b - a) // Sort by press_id descending (newest first)
+                    .map(([pressId, { meta, files }]) => {
                     return (
-                        <div key={item.press_id} className="list-item">
+                        <div key={pressId} className="list-item">
                             <div className="list-icon">📰</div>
                             <div className="list-content">
-                                <h3>{item.title}</h3>
+                                <h3>{String(meta?.title || `Press Release #${pressId}`)}</h3>
                                 <div className="list-meta">
-                                    <span className="meta-text">No. {item.press_id}</span>
-                                    {item.publication_date && (
+                                    <span className="meta-text">No. {pressId}</span>
+                                    {meta?.publication_date ? (
                                         <>
                                             <span className="meta-text divider">•</span>
-                                            <span className="meta-text">{item.publication_date}</span>
+                                            <span className="meta-text">{String(meta.publication_date)}</span>
                                         </>
-                                    )}
+                                    ) : null}
                                 </div>
+
                                 {files.length > 0 && (
                                     <div className="pr-files">
                                         {files.map((file, i) => {
@@ -157,11 +262,11 @@ export default function IndexViewer() {
                                             const match = file.file_name.trim().match(/ - (\d+)\.\w+$/);
                                             const num = match ? match[1] : i + 1;
                                             return (
-                                                <a 
+                                                <a
                                                     href={file.url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    key={`${item.press_id}-${file.file_name}-${i}`}
+                                                    key={file.url}
                                                     className={`file-chip ${getFileChipClass(ext)}`}
                                                 >
                                                     {ext} · File {num}
