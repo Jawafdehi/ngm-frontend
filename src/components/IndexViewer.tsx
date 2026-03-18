@@ -74,7 +74,8 @@ export default function IndexViewer() {
     const [manuscripts, setManuscripts] = useState<Record<TabKey, Manuscript[] | null>>({ kanun: null, ciaa: null, press: null });
     const [tabLoading, setTabLoading] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false });
     const [rootLoading, setRootLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [rootError, setRootError] = useState<string | null>(null);
+    const [tabErrors, setTabErrors] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null });
     const [activeTab, setActiveTab] = useState<TabKey>('kanun');
     const loadingRef = useRef<Set<TabKey>>(new Set());
     const abortControllersRef = useRef<Map<TabKey, AbortController>>(new Map());
@@ -107,7 +108,7 @@ export default function IndexViewer() {
             .catch((err) => {
                 if (controller.signal.aborted || err.name === 'AbortError') return;
                 
-                setError(err.message || 'An unknown error occurred.');
+                setRootError(err.message || 'An unknown error occurred.');
                 setRootLoading(false);
             });
 
@@ -139,7 +140,7 @@ export default function IndexViewer() {
                 return; // Don't set error for cancelled requests
             }
             const msg = err instanceof Error ? err.message : 'Failed to load data';
-            setError(msg);
+            setTabErrors((prev) => ({ ...prev, [tab]: msg }));
         } finally {
             abortControllersRef.current.delete(tab);
             loadingRef.current.delete(tab);
@@ -169,12 +170,12 @@ export default function IndexViewer() {
         );
     }
 
-    if (error) {
+    if (rootError) {
         return (
             <div className="state-container error fade-in">
                 <p className="error-icon">⚠️</p>
                 <h2>Connection Error</h2>
-                <p>{error}</p>
+                <p>{rootError}</p>
                 <button className="btn-primary mt" onClick={() => window.location.reload()}>Retry</button>
             </div>
         );
@@ -189,6 +190,18 @@ export default function IndexViewer() {
 
     const renderKanunPatrika = () => {
         if (tabLoading.kanun) return renderLoading();
+        if (tabErrors.kanun) {
+            return (
+                <div className="state-container error fade-in">
+                    <p className="error-icon">⚠️</p>
+                    <p>{tabErrors.kanun}</p>
+                    <button className="btn-primary mt" onClick={() => {
+                        setTabErrors(prev => ({ ...prev, kanun: null }));
+                        loadTab('kanun');
+                    }}>Retry</button>
+                </div>
+            );
+        }
         const items = manuscripts.kanun || [];
         if (items.length === 0) return <p className="empty-state">No records found for Kanun Patrika.</p>;
 
@@ -212,6 +225,18 @@ export default function IndexViewer() {
 
     const renderCiaaReports = () => {
         if (tabLoading.ciaa) return renderLoading();
+        if (tabErrors.ciaa) {
+            return (
+                <div className="state-container error fade-in">
+                    <p className="error-icon">⚠️</p>
+                    <p>{tabErrors.ciaa}</p>
+                    <button className="btn-primary mt" onClick={() => {
+                        setTabErrors(prev => ({ ...prev, ciaa: null }));
+                        loadTab('ciaa');
+                    }}>Retry</button>
+                </div>
+            );
+        }
         const items = manuscripts.ciaa || [];
         if (items.length === 0) return <p className="empty-state">No records found for CIAA Annual Reports.</p>;
 
@@ -268,6 +293,18 @@ export default function IndexViewer() {
 
     const renderPressReleases = () => {
         if (tabLoading.press) return renderLoading();
+        if (tabErrors.press) {
+            return (
+                <div className="state-container error fade-in">
+                    <p className="error-icon">⚠️</p>
+                    <p>{tabErrors.press}</p>
+                    <button className="btn-primary mt" onClick={() => {
+                        setTabErrors(prev => ({ ...prev, press: null }));
+                        loadTab('press');
+                    }}>Retry</button>
+                </div>
+            );
+        }
         const items = manuscripts.press || [];
         if (items.length === 0) return <p className="empty-state">No records found for CIAA Press Releases.</p>;
 
@@ -283,27 +320,33 @@ export default function IndexViewer() {
         };
 
         // Group manuscripts by press_id since each file is now its own Manuscript entry
-        const grouped = new Map<number, { meta: Record<string, unknown>; files: Manuscript[] }>();
+        const grouped = new Map<string, { pressId: number | null; meta: Record<string, unknown>; files: Manuscript[] }>();
         for (const item of items) {
-            const pressId = Number(item.metadata?.press_id) || 0;
-            if (!grouped.has(pressId)) {
-                grouped.set(pressId, { meta: item.metadata, files: [] });
+            const parsed = Number(item.metadata?.press_id);
+            const hasValidPressId = Number.isFinite(parsed) && parsed > 0;
+            const groupKey = hasValidPressId ? `press:${parsed}` : `file:${item.url}`;
+            if (!grouped.has(groupKey)) {
+                grouped.set(groupKey, {
+                    pressId: hasValidPressId ? parsed : null,
+                    meta: item.metadata,
+                    files: [],
+                });
             }
-            grouped.get(pressId)!.files.push(item);
+            grouped.get(groupKey)!.files.push(item);
         }
 
         return (
             <div className="list-view fade-in">
                 {[...grouped.entries()]
-                    .sort(([a], [b]) => b - a) // Sort by press_id descending (newest first)
-                    .map(([pressId, { meta, files }]) => {
+                    .sort(([, a], [, b]) => (b.pressId ?? -Infinity) - (a.pressId ?? -Infinity))
+                    .map(([, { pressId, meta, files }]) => {
                     return (
-                        <div key={pressId} className="list-item">
+                        <div key={`${pressId ?? 'unknown'}-${String(meta?.title ?? '')}`} className="list-item">
                             <div className="list-icon">📰</div>
                             <div className="list-content">
-                                <h3>{String(meta?.title || `Press Release #${pressId}`)}</h3>
+                                <h3>{String(meta?.title || `Press Release ${pressId ? `#${pressId}` : '(Unknown)'}`)}</h3>
                                 <div className="list-meta">
-                                    <span className="meta-text">No. {pressId}</span>
+                                    <span className="meta-text">No. {pressId ?? 'N/A'}</span>
                                     {meta?.publication_date ? (
                                         <>
                                             <span className="meta-text divider">•</span>
