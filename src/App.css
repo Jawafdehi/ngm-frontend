@@ -332,6 +332,31 @@
   background: var(--accent-hover);
 }
 
+/* Infinite scroll */
+.scroll-sentinel {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0;
+  min-height: 80px;
+}
+
+.loading-more {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.spinner-small {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
 /* Footer */
 .app-footer {
   text-align: center;

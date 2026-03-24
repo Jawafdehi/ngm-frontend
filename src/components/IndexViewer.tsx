@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 
-// NGM Index v2.0 types - Tree-based hierarchical index
+// TODO: Refactor this file into smaller components:
+// Extract API logic → src/api/indexApi.ts (fetchPage, types)
+// Extract tab renderers → src/components/tabs/KanunTab.tsx, CiaaReportsTab.tsx, PressReleasesTab.tsx
+// Extract shared UI → src/components/ui/LoadingSpinner.tsx, ErrorMessage.tsx, EmptyState.tsx
+// Keep IndexViewer.tsx as orchestrator with state management only
+
+// NGM Index types - Tree-based hierarchical index
 type Manuscript = {
     url: string;
     file_name: string;
@@ -27,38 +34,19 @@ type RootIndex = {
     children: IndexNodeStub[];
 };
 
-/** Fetch all manuscripts for a node, following pagination via `next` links. */
-async function fetchAllManuscripts(ref: string, signal?: AbortSignal): Promise<Manuscript[]> {
-    const manuscripts: Manuscript[] = [];
-    let url: string | undefined = ref;
-    const visitedUrls = new Set<string>();
-    let pageCount = 0;
-    const maxPages = 100; // Safety limit
+type TabKey = 'kanun' | 'ciaa' | 'press';
 
-    while (url) {
-        if (signal?.aborted) {
-            throw new Error('Request was cancelled');
-        }
-
-        if (visitedUrls.has(url)) {
-            throw new Error(`Circular reference detected: ${url}`);
-        }
-
-        if (pageCount >= maxPages) {
-            throw new Error(`Maximum page limit (${maxPages}) exceeded`);
-        }
-
-        visitedUrls.add(url);
-        pageCount++;
-
-        const res = await fetch(url, { signal });
-        if (!res.ok) throw new Error(`Failed to fetch ${url}`);
-        const node: IndexNodeFull = await res.json();
-        if (node.manuscripts) manuscripts.push(...node.manuscripts);
-        url = node.next;
-    }
-
-    return manuscripts;
+async function fetchPage(
+    url: string,
+    signal?: AbortSignal,
+): Promise<{ manuscripts: Manuscript[]; nextUrl?: string }> {
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new Error('Failed to load index data');
+    const node: IndexNodeFull = await res.json();
+    return {
+        manuscripts: node.manuscripts || [],
+        nextUrl: node.next,
+    };
 }
 
 const NODE_NAMES = {
@@ -67,36 +55,52 @@ const NODE_NAMES = {
     'ciaa-press-releases': 'press',
 } as const;
 
-type TabKey = 'kanun' | 'ciaa' | 'press';
-
 export default function IndexViewer() {
     const [stubs, setStubs] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null });
     const [manuscripts, setManuscripts] = useState<Record<TabKey, Manuscript[] | null>>({ kanun: null, ciaa: null, press: null });
+    const [nextUrls, setNextUrls] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null });
     const [tabLoading, setTabLoading] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false });
+    const [loadingMore, setLoadingMore] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false });
     const [rootLoading, setRootLoading] = useState(true);
     const [rootError, setRootError] = useState<string | null>(null);
     const [tabErrors, setTabErrors] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null });
     const [activeTab, setActiveTab] = useState<TabKey>('kanun');
     const loadingRef = useRef<Set<TabKey>>(new Set());
-    const abortControllersRef = useRef<Map<TabKey, AbortController>>(new Map());
+    const loadingMoreRef = useRef<Set<TabKey>>(new Set());
+    const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+
+    // Infinite scroll sentinels for each tab
+    const kanunSentinel = useInfiniteScroll(
+        () => loadMore('kanun'),
+        !!nextUrls.kanun,
+        loadingMore.kanun,
+    );
+    const ciaaSentinel = useInfiniteScroll(
+        () => loadMore('ciaa'),
+        !!nextUrls.ciaa,
+        loadingMore.ciaa,
+    );
+    const pressSentinel = useInfiniteScroll(
+        () => loadMore('press'),
+        !!nextUrls.press,
+        loadingMore.press,
+    );
 
     // Load root index once
     useEffect(() => {
         const controller = new AbortController();
-        
+
         // Use local development server if available, fallback to production
-        const indexUrl = import.meta.env.DEV 
+        const indexUrl = import.meta.env.DEV
             ? 'http://localhost:8001/index-v2.json'
             : 'https://ngm-store.newnepal.org/index-v2.json';
-            
+
         fetch(indexUrl, { signal: controller.signal })
             .then((res) => {
                 if (!res.ok) throw new Error('Failed to fetch the NGM Index v2');
                 return res.json() as Promise<RootIndex>;
             })
             .then((root) => {
-                if (controller.signal.aborted) return;
-                
                 const refs: Record<TabKey, string | null> = { kanun: null, ciaa: null, press: null };
                 for (const child of root.children) {
                     const tab = NODE_NAMES[child.name as keyof typeof NODE_NAMES];
@@ -106,8 +110,8 @@ export default function IndexViewer() {
                 setRootLoading(false);
             })
             .catch((err) => {
-                if (controller.signal.aborted || err.name === 'AbortError') return;
-                
+                if (err.name === 'AbortError') return;
+
                 setRootError(err.message || 'An unknown error occurred.');
                 setRootLoading(false);
             });
@@ -115,44 +119,78 @@ export default function IndexViewer() {
         return () => controller.abort();
     }, []);
 
-    // Lazy-load manuscripts when a tab is first activated
-    const loadTab = useCallback(async (tab: TabKey) => {
-        const ref = stubs[tab];
-        if (!ref || manuscripts[tab] !== null || loadingRef.current.has(tab)) return;
+    // Lazy-load first page when a tab is first activated
+    const loadTab = useCallback(
+        async (tab: TabKey) => {
+            const ref = stubs[tab];
+            if (!ref || manuscripts[tab] !== null || loadingRef.current.has(tab)) return;
 
-        // Abort any existing request for this tab
-        const existingController = abortControllersRef.current.get(tab);
-        if (existingController) {
-            existingController.abort();
-        }
-
-        loadingRef.current.add(tab);
-        setTabLoading((prev) => ({ ...prev, [tab]: true }));
-        
-        const controller = new AbortController();
-        abortControllersRef.current.set(tab, controller);
-        
-        try {
-            const items = await fetchAllManuscripts(ref, controller.signal);
-            setManuscripts((prev) => ({ ...prev, [tab]: items }));
-        } catch (err: unknown) {
-            if (err instanceof Error && (err.message === 'Request was cancelled' || err.name === 'AbortError')) {
-                return; // Don't set error for cancelled requests
+            const existingController = abortControllersRef.current.get(tab);
+            if (existingController) {
+                existingController.abort();
             }
-            const msg = err instanceof Error ? err.message : 'Failed to load data';
-            setTabErrors((prev) => ({ ...prev, [tab]: msg }));
-        } finally {
-            abortControllersRef.current.delete(tab);
-            loadingRef.current.delete(tab);
-            setTabLoading((prev) => ({ ...prev, [tab]: false }));
-        }
-    }, [stubs, manuscripts]);
+
+            loadingRef.current.add(tab);
+            setTabLoading((prev) => ({ ...prev, [tab]: true }));
+
+            const controller = new AbortController();
+            abortControllersRef.current.set(tab, controller);
+
+            try {
+                const { manuscripts: items, nextUrl } = await fetchPage(ref, controller.signal);
+                setManuscripts((prev) => ({ ...prev, [tab]: items }));
+                setNextUrls((prev) => ({ ...prev, [tab]: nextUrl || null }));
+            } catch (err: unknown) {
+                if (err instanceof Error && err.name === 'AbortError') {
+                    return;
+                }
+                const msg = err instanceof Error ? err.message : 'Failed to load data';
+                setTabErrors((prev) => ({ ...prev, [tab]: msg }));
+            } finally {
+                abortControllersRef.current.delete(tab);
+                loadingRef.current.delete(tab);
+                setTabLoading((prev) => ({ ...prev, [tab]: false }));
+            }
+        },
+        [stubs, manuscripts],
+    );
+
+    // Load more manuscripts (next page)
+    const loadMore = useCallback(
+        async (tab: TabKey) => {
+            const nextUrl = nextUrls[tab];
+            if (!nextUrl || loadingMoreRef.current.has(tab)) return;
+
+            loadingMoreRef.current.add(tab);
+            setLoadingMore((prev) => ({ ...prev, [tab]: true }));
+
+            const controller = new AbortController();
+            abortControllersRef.current.set(`${tab}-more`, controller);
+
+            try {
+                const { manuscripts: items, nextUrl: newNextUrl } = await fetchPage(nextUrl, controller.signal);
+                setManuscripts((prev) => ({ ...prev, [tab]: [...(prev[tab] ?? []), ...items] }));
+                setNextUrls((prev) => ({ ...prev, [tab]: newNextUrl || null }));
+            } catch (err: unknown) {
+                if (err instanceof Error && err.name === 'AbortError') {
+                    return;
+                }
+                const msg = err instanceof Error ? err.message : 'Failed to load more';
+                setTabErrors((prev) => ({ ...prev, [tab]: msg }));
+            } finally {
+                loadingMoreRef.current.delete(tab);
+                abortControllersRef.current.delete(`${tab}-more`);
+                setLoadingMore((prev) => ({ ...prev, [tab]: false }));
+            }
+        },
+        [nextUrls],
+    );
 
     useEffect(() => {
         if (!rootLoading) loadTab(activeTab);
     }, [activeTab, rootLoading, loadTab]);
 
-    // Cleanup on unmount - abort all pending requests
+    // Cleanup on unmount
     useEffect(() => {
         const controllers = abortControllersRef.current;
         return () => {
@@ -176,7 +214,9 @@ export default function IndexViewer() {
                 <p className="error-icon">⚠️</p>
                 <h2>Connection Error</h2>
                 <p>{rootError}</p>
-                <button className="btn-primary mt" onClick={() => window.location.reload()}>Retry</button>
+                <button className="btn-primary" onClick={() => window.location.reload()}>
+                    Retry
+                </button>
             </div>
         );
     }
@@ -195,23 +235,37 @@ export default function IndexViewer() {
                 <div className="state-container error fade-in">
                     <p className="error-icon">⚠️</p>
                     <p>{tabErrors.kanun}</p>
-                    <button className="btn-primary mt" onClick={() => {
-                        setTabErrors(prev => ({ ...prev, kanun: null }));
-                        loadTab('kanun');
-                    }}>Retry</button>
+                    <button
+                        className="btn-primary"
+                        onClick={() => {
+                            setTabErrors((prev) => ({ ...prev, kanun: null }));
+                            setManuscripts((prev) => ({ ...prev, kanun: null }));
+                            loadTab('kanun');
+                        }}
+                    >
+                        Retry
+                    </button>
                 </div>
             );
         }
-        const items = manuscripts.kanun || [];
-        if (items.length === 0) return <p className="empty-state">No records found for Kanun Patrika.</p>;
+        const items = manuscripts.kanun ?? [];
+        if (manuscripts.kanun !== null && items.length === 0) {
+            return <p className="empty-state">No records found for Kanun Patrika.</p>;
+        }
 
         return (
             <div className="list-view fade-in">
                 {items.map((item) => (
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" key={item.url} className="list-item interactive">
+                    <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        key={item.url}
+                        className="list-item interactive"
+                    >
                         <div className="list-icon">🏛️</div>
                         <div className="list-content">
-                            <h3>{item.file_name.replace('.pdf', '')}</h3>
+                            <h3>{item.file_name.replace(/\.pdf$/i, '')}</h3>
                             <div className="list-meta">
                                 <span className="badge">Supreme Court</span>
                             </div>
@@ -219,6 +273,16 @@ export default function IndexViewer() {
                         <div className="list-action">→</div>
                     </a>
                 ))}
+                {nextUrls.kanun && (
+                    <div ref={kanunSentinel} className="scroll-sentinel">
+                        {loadingMore.kanun && (
+                            <div className="loading-more">
+                                <div className="spinner-small"></div>
+                                <span>Loading more...</span>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         );
     };
@@ -230,39 +294,47 @@ export default function IndexViewer() {
                 <div className="state-container error fade-in">
                     <p className="error-icon">⚠️</p>
                     <p>{tabErrors.ciaa}</p>
-                    <button className="btn-primary mt" onClick={() => {
-                        setTabErrors(prev => ({ ...prev, ciaa: null }));
-                        loadTab('ciaa');
-                    }}>Retry</button>
+                    <button
+                        className="btn-primary"
+                        onClick={() => {
+                            setTabErrors((prev) => ({ ...prev, ciaa: null }));
+                            setManuscripts((prev) => ({ ...prev, ciaa: null }));
+                            loadTab('ciaa');
+                        }}
+                    >
+                        Retry
+                    </button>
                 </div>
             );
         }
-        const items = manuscripts.ciaa || [];
-        if (items.length === 0) return <p className="empty-state">No records found for CIAA Annual Reports.</p>;
+        const items = manuscripts.ciaa ?? [];
+        if (manuscripts.ciaa !== null && items.length === 0) {
+            return <p className="empty-state">No records found for CIAA Annual Reports.</p>;
+        }
 
         // Sort by date (newest first) - try multiple date fields
         const sortedItems = [...items].sort((a, b) => {
             const rawDateA = a.metadata?.date ?? a.metadata?.year ?? null;
             const rawDateB = b.metadata?.date ?? b.metadata?.year ?? null;
-            
+
             // If both have dates, compare them
             if (rawDateA && rawDateB) {
                 const dateA = new Date(String(rawDateA));
                 const dateB = new Date(String(rawDateB));
-                
+
                 // If both are valid dates, compare numerically
                 if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
-                    return dateB.getTime() - dateA.getTime(); // Newest first
+                    return dateB.getTime() - dateA.getTime();
                 }
-                
+
                 // Fallback to string comparison
                 return String(rawDateB).localeCompare(String(rawDateA));
             }
-            
+
             // If only one has a date, prioritize the dated item
             if (rawDateA && !rawDateB) return -1;
             if (!rawDateA && rawDateB) return 1;
-            
+
             // If neither has a date, fallback to filename comparison (reverse alphabetical)
             return b.file_name.localeCompare(a.file_name);
         });
@@ -270,23 +342,42 @@ export default function IndexViewer() {
         return (
             <div className="list-view fade-in">
                 {sortedItems.map((item) => {
-                    const meta = item.metadata as Record<string, string>;
+                    const meta = item.metadata;
+                    const title = typeof meta?.title === 'string' ? meta.title : item.file_name;
+                    const serialNumber = meta?.serial_number ? String(meta.serial_number) : 'N/A';
+                    const date = meta?.date ? String(meta.date) : 'Unknown Date';
                     return (
-                        <a href={item.url} target="_blank" rel="noopener noreferrer" key={item.url} className="list-item interactive">
+                        <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            key={item.url}
+                            className="list-item interactive"
+                        >
                             <div className="list-icon">⚖️</div>
                             <div className="list-content">
-                                <h3>{meta?.title || item.file_name}</h3>
+                                <h3>{title}</h3>
                                 <div className="list-meta">
                                     <span className="badge warning">CIAA</span>
-                                    <span className="meta-text">No. {meta?.serial_number || 'N/A'}</span>
+                                    <span className="meta-text">No. {serialNumber}</span>
                                     <span className="meta-text divider">•</span>
-                                    <span className="meta-text">{meta?.date || 'Unknown Date'}</span>
+                                    <span className="meta-text">{date}</span>
                                 </div>
                             </div>
                             <div className="list-action">→</div>
                         </a>
                     );
                 })}
+                {nextUrls.ciaa && (
+                    <div ref={ciaaSentinel} className="scroll-sentinel">
+                        {loadingMore.ciaa && (
+                            <div className="loading-more">
+                                <div className="spinner-small"></div>
+                                <span>Loading more...</span>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         );
     };
@@ -298,15 +389,23 @@ export default function IndexViewer() {
                 <div className="state-container error fade-in">
                     <p className="error-icon">⚠️</p>
                     <p>{tabErrors.press}</p>
-                    <button className="btn-primary mt" onClick={() => {
-                        setTabErrors(prev => ({ ...prev, press: null }));
-                        loadTab('press');
-                    }}>Retry</button>
+                    <button
+                        className="btn-primary"
+                        onClick={() => {
+                            setTabErrors((prev) => ({ ...prev, press: null }));
+                            setManuscripts((prev) => ({ ...prev, press: null }));
+                            loadTab('press');
+                        }}
+                    >
+                        Retry
+                    </button>
                 </div>
             );
         }
-        const items = manuscripts.press || [];
-        if (items.length === 0) return <p className="empty-state">No records found for CIAA Press Releases.</p>;
+        const items = manuscripts.press ?? [];
+        if (manuscripts.press !== null && items.length === 0) {
+            return <p className="empty-state">No records found for CIAA Press Releases.</p>;
+        }
 
         const extractFileExtension = (fileName: string): string => {
             const match = fileName.trim().match(/\.([A-Za-z0-9]+)$/);
@@ -339,46 +438,61 @@ export default function IndexViewer() {
             <div className="list-view fade-in">
                 {[...grouped.entries()]
                     .sort(([, a], [, b]) => (b.pressId ?? -Infinity) - (a.pressId ?? -Infinity))
-                    .map(([, { pressId, meta, files }]) => {
-                    return (
-                        <div key={`${pressId ?? 'unknown'}-${String(meta?.title ?? '')}`} className="list-item">
-                            <div className="list-icon">📰</div>
-                            <div className="list-content">
-                                <h3>{String(meta?.title || `Press Release ${pressId ? `#${pressId}` : '(Unknown)'}`)}</h3>
-                                <div className="list-meta">
-                                    <span className="meta-text">No. {pressId ?? 'N/A'}</span>
-                                    {meta?.publication_date ? (
-                                        <>
-                                            <span className="meta-text divider">•</span>
-                                            <span className="meta-text">{String(meta.publication_date)}</span>
-                                        </>
-                                    ) : null}
-                                </div>
-
-                                {files.length > 0 && (
-                                    <div className="pr-files">
-                                        {files.map((file, i) => {
-                                            const ext = extractFileExtension(file.file_name);
-                                            const match = file.file_name.trim().match(/ - (\d+)\.\w+$/);
-                                            const num = match ? match[1] : i + 1;
-                                            return (
-                                                <a
-                                                    href={file.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    key={file.url}
-                                                    className={`file-chip ${getFileChipClass(ext)}`}
-                                                >
-                                                    {ext} · File {num}
-                                                </a>
-                                            );
-                                        })}
+                    // Use groupKey as the React key — it is unique by construction
+                    .map(([groupKey, { pressId, meta, files }]) => {
+                        const title = typeof meta?.title === 'string' 
+                            ? meta.title 
+                            : `Press Release ${pressId ? `#${pressId}` : '(Unknown)'}`;
+                        const publicationDate = meta?.publication_date ? String(meta.publication_date) : null;
+                        return (
+                            <div key={groupKey} className="list-item">
+                                <div className="list-icon">📰</div>
+                                <div className="list-content">
+                                    <h3>{title}</h3>
+                                    <div className="list-meta">
+                                        <span className="meta-text">No. {pressId ?? 'N/A'}</span>
+                                        {publicationDate ? (
+                                            <>
+                                                <span className="meta-text divider">•</span>
+                                                <span className="meta-text">{publicationDate}</span>
+                                            </>
+                                        ) : null}
                                     </div>
-                                )}
+
+                                    {files.length > 0 && (
+                                        <div className="pr-files">
+                                            {files.map((file, i) => {
+                                                const ext = extractFileExtension(file.file_name);
+                                                const match = file.file_name.trim().match(/ - (\d+)\.\w+$/);
+                                                const num = match ? match[1] : i + 1;
+                                                return (
+                                                    <a
+                                                        href={file.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        key={file.url}
+                                                        className={`file-chip ${getFileChipClass(ext)}`}
+                                                    >
+                                                        {ext} · File {num}
+                                                    </a>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    );
-                })}
+                        );
+                    })}
+                {nextUrls.press && (
+                    <div ref={pressSentinel} className="scroll-sentinel">
+                        {loadingMore.press && (
+                            <div className="loading-more">
+                                <div className="spinner-small"></div>
+                                <span>Loading more...</span>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         );
     };
