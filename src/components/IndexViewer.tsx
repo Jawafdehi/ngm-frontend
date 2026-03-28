@@ -116,7 +116,7 @@ export default function IndexViewer() {
         const controller = new AbortController();
         
         // Always use production data
-        const indexUrl = 'https://ngm-store.newnepal.org/index-v2.json';
+        const indexUrl = 'https://ngm-store.jawafdehi.org/index-v2.json';
             
         fetch(indexUrl, { signal: controller.signal })
             .then((res) => {
