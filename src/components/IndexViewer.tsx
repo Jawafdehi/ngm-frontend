@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from './DataTable';
+// TODO: Replace with backend metadata extraction when persons data is available
+import { containsPersonName } from '../data/casesData';
 
 // NGM Index v2.0 types - Tree-based hierarchical index
 type Manuscript = {
@@ -48,6 +50,15 @@ function extractYear(filename: string): string | null {
     return devanagariToAscii(match[0]);
 }
 
+// Convert production URLs to use proxy in development
+function getProxiedUrl(url: string): string {
+    const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isDevelopment && url.startsWith('https://ngm-store.jawafdehi.org')) {
+        return url.replace('https://ngm-store.jawafdehi.org', '/api');
+    }
+    return url;
+}
+
 /** Fetch all manuscripts for a node, following pagination via `next` links. */
 async function fetchAllManuscripts(
     ref: string, 
@@ -81,7 +92,8 @@ async function fetchAllManuscripts(
             onProgress(pageCount, maxPages);
         }
 
-        const res = await fetch(url, { signal });
+        const proxiedUrl = getProxiedUrl(url);
+        const res = await fetch(proxiedUrl, { signal });
         if (!res.ok) throw new Error(`Failed to fetch ${url}`);
         const node: IndexNodeFull = await res.json();
         if (node.manuscripts) manuscripts.push(...node.manuscripts);
@@ -115,8 +127,11 @@ export default function IndexViewer() {
     useEffect(() => {
         const controller = new AbortController();
         
-        // Always use production data
-        const indexUrl = 'https://ngm-store.newnepal.org/index-v2.json';
+        // Use Vite proxy for development, direct URL for production
+        const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const indexUrl = isDevelopment 
+            ? '/api/index-v2.json'
+            : 'https://ngm-store.jawafdehi.org/index-v2.json';
             
         fetch(indexUrl, { signal: controller.signal })
             .then((res) => {
@@ -129,7 +144,10 @@ export default function IndexViewer() {
                 const refs: Record<TabKey, string | null> = { kanun: null, ciaa: null, press: null };
                 for (const child of root.children) {
                     const tab = NODE_NAMES[child.name as keyof typeof NODE_NAMES];
-                    if (tab) refs[tab] = child.$ref;
+                    if (tab) {
+                        // Convert URLs to use proxy in development
+                        refs[tab] = getProxiedUrl(child.$ref);
+                    }
                 }
                 setStubs(refs);
                 setRootLoading(false);
@@ -304,6 +322,8 @@ export default function IndexViewer() {
                     columns={columns} 
                     pageSize={10}
                     searchPlaceholder="Search by document name, year, or any keyword..."
+                    showAdvancedSearch={false}
+                    onNameSearch={(rowText, nameQuery) => containsPersonName(rowText, nameQuery)}
                 />
             </div>
         );
@@ -407,6 +427,8 @@ export default function IndexViewer() {
                     columns={columns} 
                     pageSize={10}
                     searchPlaceholder="Search by serial number, title, date, or any keyword..."
+                    showAdvancedSearch={false}
+                    onNameSearch={(rowText, nameQuery) => containsPersonName(rowText, nameQuery)}
                 />
             </div>
         );
@@ -508,6 +530,8 @@ export default function IndexViewer() {
                     columns={columns} 
                     pageSize={10}
                     searchPlaceholder="Search by press release number, title, date, or any keyword..."
+                    showAdvancedSearch={false}
+                    onNameSearch={(rowText, nameQuery) => containsPersonName(rowText, nameQuery)}
                 />
             </div>
         );

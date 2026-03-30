@@ -10,26 +10,57 @@ import {
     type ColumnFiltersState,
 } from '@tanstack/react-table';
 import { useState } from 'react';
+import * as React from 'react';
 
 interface DataTableProps<TData> {
     data: TData[];
     columns: ColumnDef<TData, any>[];
     pageSize?: number;
     searchPlaceholder?: string;
+    showAdvancedSearch?: boolean;
+    onNameSearch?: (rowText: string, nameQuery: string) => boolean;
 }
 
 export function DataTable<TData>({ 
     data, 
     columns, 
     pageSize = 20,
-    searchPlaceholder = "Search across all fields..."
+    searchPlaceholder = "Search across all fields...",
+    showAdvancedSearch = false,
+    onNameSearch
 }: DataTableProps<TData>) {
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
     const [globalFilter, setGlobalFilter] = useState('');
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [nameSearch, setNameSearch] = useState('');
+
+    // Filter data based on name search
+    const filteredData = React.useMemo(() => {
+        if (!nameSearch.trim()) {
+            return data;
+        }
+        
+        if (!onNameSearch) {
+            return data;
+        }
+        
+        const lowerQuery = nameSearch.toLowerCase();
+        
+        return data.filter((row: any) => {
+            // Check all string fields in the row
+            const rowText = Object.values(row)
+                .filter(val => typeof val === 'string')
+                .join(' ')
+                .toLowerCase();
+            
+            // Use the onNameSearch callback to check if this row matches the person search
+            return onNameSearch(rowText, lowerQuery);
+        });
+    }, [data, nameSearch, onNameSearch]);
 
     const table = useReactTable({
-        data,
+        data: filteredData,
         columns,
         state: {
             sorting,
@@ -43,6 +74,28 @@ export function DataTable<TData>({
         getFilteredRowModel: getFilteredRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
         getSortedRowModel: getSortedRowModel(),
+        globalFilterFn: (row, columnId, filterValue) => {
+            const searchValue = String(filterValue).toLowerCase();
+            const rowValues = String(row.getValue(columnId)).toLowerCase();
+            
+            // First check if the search value directly matches the row
+            if (rowValues.includes(searchValue)) {
+                return true;
+            }
+            
+            // If onNameSearch is provided, also check person names
+            if (onNameSearch) {
+                const allRowText = Object.values(row.original)
+                    .filter(val => typeof val === 'string')
+                    .join(' ')
+                    .toLowerCase();
+                
+                // Check if this search matches a person and that person is in the row
+                return onNameSearch(allRowText, searchValue);
+            }
+            
+            return false;
+        },
         initialState: {
             pagination: {
                 pageSize,
@@ -74,16 +127,53 @@ export function DataTable<TData>({
                         </button>
                     )}
                 </div>
-                <div className="table-info">
-                    {table.getFilteredRowModel().rows.length !== data.length ? (
-                        <>
-                            <span className="filtered-count">{table.getFilteredRowModel().rows.length}</span> of {data.length} records
-                        </>
-                    ) : (
-                        <>{data.length} records</>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div className="table-info">
+                        {table.getFilteredRowModel().rows.length !== filteredData.length ? (
+                            <>
+                                <span className="filtered-count">{table.getFilteredRowModel().rows.length}</span> of {filteredData.length} records
+                            </>
+                        ) : (
+                            <>{filteredData.length} records</>
+                        )}
+                    </div>
+                    {showAdvancedSearch && (
+                        <button
+                            className="advanced-search-btn"
+                            onClick={() => setShowAdvanced(!showAdvanced)}
+                            title="Advanced search options"
+                        >
+                            {showAdvanced ? '▼' : '▶'} Advanced
+                        </button>
                     )}
                 </div>
             </div>
+
+            {/* Advanced Search Panel */}
+            {showAdvancedSearch && showAdvanced && (
+                <div className="advanced-search-panel">
+                    <div className="advanced-search-field">
+                        <label htmlFor="name-search">Search by Name:</label>
+                        <input
+                            id="name-search"
+                            type="text"
+                            value={nameSearch}
+                            onChange={(e) => setNameSearch(e.target.value)}
+                            placeholder="Enter person name (Nepali or English)..."
+                            className="advanced-search-input"
+                        />
+                        {nameSearch && (
+                            <button
+                                className="clear-search"
+                                onClick={() => setNameSearch('')}
+                                title="Clear name search"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Table */}
             <div className="table-wrapper">
