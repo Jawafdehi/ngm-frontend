@@ -9,8 +9,7 @@ import {
     type SortingState,
     type ColumnFiltersState,
 } from '@tanstack/react-table';
-import { useState } from 'react';
-import * as React from 'react';
+import { useState, useMemo } from 'react';
 
 interface DataTableProps<TData> {
     data: TData[];
@@ -36,7 +35,7 @@ export function DataTable<TData>({
     const [nameSearch, setNameSearch] = useState('');
 
     // Filter data based on name search
-    const filteredData = React.useMemo(() => {
+    const filteredData = useMemo(() => {
         if (!nameSearch.trim()) {
             return data;
         }
@@ -47,9 +46,9 @@ export function DataTable<TData>({
         
         const lowerQuery = nameSearch.toLowerCase();
         
-        return data.filter((row: any) => {
+        return data.filter((row) => {
             // Check all string fields in the row
-            const rowText = Object.values(row)
+            const rowText = Object.values(row as Record<string, unknown>)
                 .filter(val => typeof val === 'string')
                 .join(' ')
                 .toLowerCase();

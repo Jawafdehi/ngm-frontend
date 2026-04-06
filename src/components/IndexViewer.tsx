@@ -4,6 +4,12 @@ import { DataTable } from './DataTable';
 // TODO: Replace with backend metadata extraction when persons data is available
 import { containsPersonName } from '../data/casesData';
 
+// TODO: Refactor this file into smaller components:
+// - Extract API logic → src/api/indexApi.ts (fetchPage, Types)
+// - Extract tab renderers → src/components/tabs/KanunTab.tsx, CiaaReportsTab.tsx, PressReleasesTab.tsx
+// - Extract shared UI → src/components/ui/LoadingSpinner.tsx, ErrorMessage.tsx, EmptyState.tsx
+// - Keep IndexViewer.tsx as orchestrator with state management only
+
 // NGM Index v2.0 types - Tree-based hierarchical index
 type Manuscript = {
     url: string;
@@ -51,8 +57,9 @@ function extractYear(filename: string): string | null {
 }
 
 // Convert production URLs to use proxy in development
+const isDevelopment = import.meta.env.DEV;
+
 function getProxiedUrl(url: string): string {
-    const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     if (isDevelopment && url.startsWith('https://ngm-store.jawafdehi.org')) {
         return url.replace('https://ngm-store.jawafdehi.org', '/api');
     }
@@ -128,7 +135,6 @@ export default function IndexViewer() {
         const controller = new AbortController();
         
         // Use Vite proxy for development, direct URL for production
-        const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const indexUrl = isDevelopment 
             ? '/api/index-v2.json'
             : 'https://ngm-store.jawafdehi.org/index-v2.json';
@@ -173,6 +179,9 @@ export default function IndexViewer() {
             existingController.abort();
         }
 
+        // Clear any stale errors before starting new load
+        setTabErrors((prev) => ({ ...prev, [tab]: null }));
+        
         loadingRef.current.add(tab);
         setTabLoading((prev) => ({ ...prev, [tab]: true }));
         
@@ -293,7 +302,10 @@ export default function IndexViewer() {
                 accessorKey: 'year',
                 header: 'Year (BS)',
                 size: 120,
-                cell: (info) => `${info.getValue()} BS`,
+                cell: (info) => {
+                    const year = info.getValue() as string;
+                    return year === 'N/A' ? year : `${year} BS`;
+                },
             },
             {
                 id: 'actions',

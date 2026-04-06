@@ -115,31 +115,6 @@ export const personsData: Person[] = [
   }
 ];
 
-// Create a searchable index mapping person names to case IDs
-export const personToCaseMap: Map<string, string[]> = new Map([
-  ['सुनिल पौडेल', ['080-CR-0158']],
-  ['sunil poudel', ['080-CR-0158']],
-  ['अनिल पौडेल', ['080-CR-0158']],
-  ['anil poudel', ['080-CR-0158']],
-  ['दिपक पौडेल', ['080-CR-0158']],
-  ['dipak poudel', ['080-CR-0158']],
-]);
-
-// Search function
-export function searchPersons(query: string): Person[] {
-  if (!query.trim()) {
-    return personsData;
-  }
-
-  const lowerQuery = query.toLowerCase();
-  
-  return personsData.filter(person => 
-    person.name.toLowerCase().includes(lowerQuery) ||
-    person.nameEnglish?.toLowerCase().includes(lowerQuery) ||
-    person.role.toLowerCase().includes(lowerQuery)
-  );
-}
-
 // Check if a text contains any person names
 export function containsPersonName(text: string, nameQuery: string): boolean {
   if (!nameQuery.trim()) return true;
