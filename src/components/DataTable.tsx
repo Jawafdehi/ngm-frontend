@@ -84,7 +84,7 @@ export function DataTable<TData>({
             
             // If onNameSearch is provided, also check person names
             if (onNameSearch) {
-                const allRowText = Object.values(row.original)
+                const allRowText = Object.values(row.original as Record<string, unknown>)
                     .filter(val => typeof val === 'string')
                     .join(' ')
                     .toLowerCase();
