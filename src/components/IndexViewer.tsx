@@ -179,8 +179,9 @@ export default function IndexViewer() {
             existingController.abort();
         }
 
-        // Clear any stale errors before starting new load
+        // Clear any stale errors and progress before starting new load
         setTabErrors((prev) => ({ ...prev, [tab]: null }));
+        setLoadingProgress((prev) => ({ ...prev, [tab]: null }));
         
         loadingRef.current.add(tab);
         setTabLoading((prev) => ({ ...prev, [tab]: true }));
@@ -200,6 +201,7 @@ export default function IndexViewer() {
             }
             const msg = err instanceof Error ? err.message : 'Failed to load data';
             setTabErrors((prev) => ({ ...prev, [tab]: msg }));
+            setLoadingProgress((prev) => ({ ...prev, [tab]: null }));
         } finally {
             abortControllersRef.current.delete(tab);
             loadingRef.current.delete(tab);

@@ -11,16 +11,16 @@ import {
 } from '@tanstack/react-table';
 import { useState, useMemo } from 'react';
 
-interface DataTableProps<TData> {
+interface DataTableProps<TData extends Record<string, unknown>> {
     data: TData[];
-    columns: ColumnDef<TData, any>[];
+    columns: ColumnDef<TData, unknown>[];
     pageSize?: number;
     searchPlaceholder?: string;
     showAdvancedSearch?: boolean;
     onNameSearch?: (rowText: string, nameQuery: string) => boolean;
 }
 
-export function DataTable<TData>({ 
+export function DataTable<TData extends Record<string, unknown>>({ 
     data, 
     columns, 
     pageSize = 20,
@@ -73,23 +73,22 @@ export function DataTable<TData>({
         getFilteredRowModel: getFilteredRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
         getSortedRowModel: getSortedRowModel(),
-        globalFilterFn: (row, columnId, filterValue) => {
+        globalFilterFn: (row, _columnId, filterValue) => {
             const searchValue = String(filterValue).toLowerCase();
-            const rowValues = String(row.getValue(columnId)).toLowerCase();
             
-            // First check if the search value directly matches the row
-            if (rowValues.includes(searchValue)) {
+            // Get all string values from the row
+            const allRowText = Object.values(row.original)
+                .filter(val => typeof val === 'string')
+                .join(' ')
+                .toLowerCase();
+            
+            // First check if the search value directly matches any column
+            if (allRowText.includes(searchValue)) {
                 return true;
             }
             
             // If onNameSearch is provided, also check person names
             if (onNameSearch) {
-                const allRowText = Object.values(row.original as Record<string, unknown>)
-                    .filter(val => typeof val === 'string')
-                    .join(' ')
-                    .toLowerCase();
-                
-                // Check if this search matches a person and that person is in the row
                 return onNameSearch(allRowText, searchValue);
             }
             
@@ -183,23 +182,30 @@ export function DataTable<TData>({
                                 {headerGroup.headers.map((header) => (
                                     <th key={header.id}>
                                         {header.isPlaceholder ? null : (
-                                            <div
-                                                className={
-                                                    header.column.getCanSort()
-                                                        ? 'sortable-header'
-                                                        : ''
-                                                }
-                                                onClick={header.column.getToggleSortingHandler()}
-                                            >
-                                                {flexRender(
-                                                    header.column.columnDef.header,
-                                                    header.getContext()
-                                                )}
-                                                {{
-                                                    asc: ' ↑',
-                                                    desc: ' ↓',
-                                                }[header.column.getIsSorted() as string] ?? null}
-                                            </div>
+                                            header.column.getCanSort() ? (
+                                                <button
+                                                    type="button"
+                                                    className="sortable-header"
+                                                    onClick={header.column.getToggleSortingHandler()}
+                                                    aria-label={`Sort by ${header.column.columnDef.header}`}
+                                                >
+                                                    {flexRender(
+                                                        header.column.columnDef.header,
+                                                        header.getContext()
+                                                    )}
+                                                    {{
+                                                        asc: ' ↑',
+                                                        desc: ' ↓',
+                                                    }[header.column.getIsSorted() as string] ?? null}
+                                                </button>
+                                            ) : (
+                                                <div>
+                                                    {flexRender(
+                                                        header.column.columnDef.header,
+                                                        header.getContext()
+                                                    )}
+                                                </div>
+                                            )
                                         )}
                                         {/* Column filters hidden - only global search is active */}
                                     </th>

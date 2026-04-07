@@ -130,50 +130,41 @@ export function containsPersonName(text: string, nameQuery: string): boolean {
     // Split names into parts for partial matching
     const nepaliParts = nepaliName.split(' ');
     const englishParts = englishName.split(' ');
-    const queryParts = lowerQuery.split(' ');
+    const queryParts = lowerQuery.split(' ').filter(part => part.length >= 3);
     
-    // Check if query matches any significant part of the person's name
-    let queryMatchesPerson = false;
+    // Track which query parts match this person's name
+    const matchedQueryParts: string[] = [];
     
     // Check Nepali name
     if (nepaliName.includes(lowerQuery) || lowerQuery.includes(nepaliName)) {
-      queryMatchesPerson = true;
+      matchedQueryParts.push(...queryParts);
     }
     
     // Check English name
     if (englishName && (englishName.includes(lowerQuery) || lowerQuery.includes(englishName))) {
-      queryMatchesPerson = true;
+      matchedQueryParts.push(...queryParts);
     }
     
-    // Check if query contains significant parts of the name (e.g., "sunil" or "poudel")
+    // Check if query parts match person's name parts
     for (const queryPart of queryParts) {
-      if (queryPart.length >= 3) { // Only check meaningful parts (3+ chars)
-        if (nepaliParts.some(part => part.includes(queryPart) || queryPart.includes(part))) {
-          queryMatchesPerson = true;
-        }
-        if (englishParts.some(part => part.includes(queryPart) || queryPart.includes(part))) {
-          queryMatchesPerson = true;
-        }
+      if (nepaliParts.some(part => part.includes(queryPart) || queryPart.includes(part))) {
+        matchedQueryParts.push(queryPart);
+      }
+      if (englishParts.some(part => part.includes(queryPart) || queryPart.includes(part))) {
+        matchedQueryParts.push(queryPart);
       }
     }
     
-    if (queryMatchesPerson) {
-      // If searching for this person, check if this person's name appears in the text (in either form)
-      const textContainsNepali = lowerText.includes(nepaliName);
-      const textContainsEnglish = englishName && lowerText.includes(englishName);
-      
-      // Also check if text contains significant parts of the name
-      let textContainsParts = false;
-      for (const part of [...nepaliParts, ...englishParts]) {
-        if (part.length >= 3 && lowerText.includes(part)) {
-          textContainsParts = true;
-          break;
-        }
-      }
-      
-      if (textContainsNepali || textContainsEnglish || textContainsParts) {
-        return true;
-      }
+    // Only proceed if query actually matches this person
+    if (matchedQueryParts.length === 0) {
+      continue;
+    }
+    
+    // Now check if the text contains the matched query parts (not all name parts)
+    const textContainsMatchedParts = matchedQueryParts.some(part => lowerText.includes(part));
+    
+    if (textContainsMatchedParts) {
+      return true;
     }
   }
   
