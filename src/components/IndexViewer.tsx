@@ -110,34 +110,51 @@ async function fetchAllManuscripts(
     return manuscripts;
 }
 
-/** Fetch all manuscripts recursively, traversing children nodes and pagination. */
+/** Fetch manuscripts recursively with depth limit for instant display. */
 async function fetchAllManuscriptsRecursive(
     ref: string,
     signal?: AbortSignal,
-    onProgress?: (current: number, total: number) => void
+    onProgress?: (current: number, total: number) => void,
+    onDataChunk?: (manuscripts: Manuscript[]) => void,
+    maxDepth: number = 3, // Limit depth: 0=root, 1=court type, 2=years, 3=cases (fetch only recent years)
+    maxPagesPerYear: number = 50 // Limit pages per year to prevent overload
 ): Promise<Manuscript[]> {
-    const manuscripts: Manuscript[] = [];
     const visitedUrls = new Set<string>();
     let pageCount = 0;
-    const maxPages = 1000; // Higher limit for recursive fetching
+    const maxPages = 5000; // Increased limit
+    const allManuscripts: Manuscript[] = [];
+    const yearPageCounts = new Map<string, number>(); // Track pages per year
 
-    async function traverse(url: string): Promise<void> {
+    async function traverse(url: string, depth: number = 0, yearContext: string = ''): Promise<Manuscript[]> {
         if (signal?.aborted) {
             throw new Error('Request was cancelled');
         }
 
         if (visitedUrls.has(url)) {
-            return; // Skip already visited URLs
+            return [];
         }
 
         if (pageCount >= maxPages) {
-            throw new Error(`Maximum page limit (${maxPages}) exceeded`);
+            console.warn(`Reached maximum page limit (${maxPages}), stopping fetch`);
+            return [];
+        }
+
+        // Check per-year limit
+        if (yearContext && depth >= 2) {
+            const yearPages = yearPageCounts.get(yearContext) || 0;
+            if (yearPages >= maxPagesPerYear) {
+                console.warn(`Reached page limit for year ${yearContext} (${maxPagesPerYear} pages), skipping`);
+                return [];
+            }
         }
 
         visitedUrls.add(url);
         pageCount++;
+        
+        if (yearContext && depth >= 2) {
+            yearPageCounts.set(yearContext, (yearPageCounts.get(yearContext) || 0) + 1);
+        }
 
-        // Report progress
         if (onProgress) {
             onProgress(pageCount, maxPages);
         }
@@ -147,26 +164,57 @@ async function fetchAllManuscriptsRecursive(
         if (!res.ok) throw new Error(`Failed to fetch ${url}`);
         const node: IndexNodeFull = await res.json();
 
+        const localManuscripts: Manuscript[] = [];
+
         // Add manuscripts from this node
         if (node.manuscripts) {
-            manuscripts.push(...node.manuscripts);
-        }
-
-        // Traverse children nodes
-        if (node.children) {
-            for (const child of node.children) {
-                await traverse(child.$ref);
+            localManuscripts.push(...node.manuscripts);
+            allManuscripts.push(...node.manuscripts);
+            
+            // Send data chunk immediately for progressive rendering
+            if (onDataChunk && node.manuscripts.length > 0) {
+                onDataChunk([...allManuscripts]);
             }
         }
 
-        // Follow pagination
-        if (node.next) {
-            await traverse(node.next);
+        // Only traverse children if within depth limit
+        if (node.children && depth < maxDepth) {
+            // For year folders (depth 1), only fetch recent years (last 3 years)
+            let childrenToFetch = node.children;
+            if (depth === 1) {
+                // Sort by year descending and take only recent 3 years
+                childrenToFetch = [...node.children]
+                    .sort((a, b) => b.name.localeCompare(a.name))
+                    .slice(0, 3);
+            }
+
+            const batchSize = 10;
+            for (let i = 0; i < childrenToFetch.length; i += batchSize) {
+                const batch = childrenToFetch.slice(i, i + batchSize);
+                const childResults = await Promise.all(
+                    batch.map(child => {
+                        // Pass year context for tracking
+                        const newYearContext = depth === 1 ? child.name : yearContext;
+                        return traverse(child.$ref, depth + 1, newYearContext);
+                    })
+                );
+                childResults.forEach(result => {
+                    localManuscripts.push(...result);
+                });
+            }
         }
+
+        // Follow pagination (only at leaf level - case folders)
+        if (node.next && depth >= maxDepth) {
+            const nextResults = await traverse(node.next, depth, yearContext);
+            localManuscripts.push(...nextResults);
+        }
+
+        return localManuscripts;
     }
 
     await traverse(ref);
-    return manuscripts;
+    return allManuscripts;
 }
 
 const NODE_NAMES = {
@@ -183,6 +231,7 @@ export default function IndexViewer() {
     const [manuscripts, setManuscripts] = useState<Record<TabKey, Manuscript[] | null>>({ kanun: null, ciaa: null, press: null, court: null });
     const [tabLoading, setTabLoading] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false, court: false });
     const [loadingProgress, setLoadingProgress] = useState<Record<TabKey, { current: number; total: number } | null>>({ kanun: null, ciaa: null, press: null, court: null });
+    const [isStreamingData, setIsStreamingData] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false, court: false });
     const [rootLoading, setRootLoading] = useState(true);
     const [rootError, setRootError] = useState<string | null>(null);
     const [tabErrors, setTabErrors] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null, court: null });
@@ -252,14 +301,29 @@ export default function IndexViewer() {
         try {
             // Use recursive fetcher for court orders (has nested structure)
             // Use regular fetcher for other tabs (flat structure with pagination)
-            const items = tab === 'court'
-                ? await fetchAllManuscriptsRecursive(ref, controller.signal, (current, total) => {
-                    setLoadingProgress((prev) => ({ ...prev, [tab]: { current, total } }));
-                })
-                : await fetchAllManuscripts(ref, controller.signal, (current, total) => {
+            if (tab === 'court') {
+                // Enable streaming mode for court orders
+                setIsStreamingData((prev) => ({ ...prev, [tab]: true }));
+                
+                const items = await fetchAllManuscriptsRecursive(
+                    ref, 
+                    controller.signal, 
+                    (current, total) => {
+                        setLoadingProgress((prev) => ({ ...prev, [tab]: { current, total } }));
+                    },
+                    (dataChunk) => {
+                        // Progressive update: show data as it arrives
+                        setManuscripts((prev) => ({ ...prev, [tab]: dataChunk }));
+                    }
+                );
+                setManuscripts((prev) => ({ ...prev, [tab]: items }));
+                setIsStreamingData((prev) => ({ ...prev, [tab]: false }));
+            } else {
+                const items = await fetchAllManuscripts(ref, controller.signal, (current, total) => {
                     setLoadingProgress((prev) => ({ ...prev, [tab]: { current, total } }));
                 });
-            setManuscripts((prev) => ({ ...prev, [tab]: items }));
+                setManuscripts((prev) => ({ ...prev, [tab]: items }));
+            }
             setLoadingProgress((prev) => ({ ...prev, [tab]: null }));
         } catch (err: unknown) {
             if (err instanceof Error && (err.message === 'Request was cancelled' || err.name === 'AbortError')) {
@@ -268,6 +332,7 @@ export default function IndexViewer() {
             const msg = err instanceof Error ? err.message : 'Failed to load data';
             setTabErrors((prev) => ({ ...prev, [tab]: msg }));
             setLoadingProgress((prev) => ({ ...prev, [tab]: null }));
+            setIsStreamingData((prev) => ({ ...prev, [tab]: false }));
         } finally {
             abortControllersRef.current.delete(tab);
             loadingRef.current.delete(tab);
@@ -312,11 +377,12 @@ export default function IndexViewer() {
 
     const renderLoading = (tab?: TabKey) => {
         const progress = tab ? loadingProgress[tab] : null;
+        const streaming = tab ? isStreamingData[tab] : false;
         return (
             <div className="state-container bounce-in">
                 <div className="spinner"></div>
                 {progress ? (
-                    <p>Loading page {progress.current}...</p>
+                    <p>Loading page {progress.current}... {streaming && '(showing results as they arrive)'}</p>
                 ) : (
                     <p>Loading...</p>
                 )}
@@ -618,7 +684,10 @@ export default function IndexViewer() {
     };
 
     const renderCourtOrders = () => {
-        if (tabLoading.court) return renderLoading('court');
+        const items = manuscripts.court || [];
+        const isLoading = tabLoading.court;
+        const isStreaming = isStreamingData.court;
+        
         if (tabErrors.court) {
             return (
                 <div className="state-container error fade-in">
@@ -631,8 +700,15 @@ export default function IndexViewer() {
                 </div>
             );
         }
-        const items = manuscripts.court || [];
-        if (items.length === 0) return <p className="empty-state">No records found for Court Orders.</p>;
+        
+        // Show loading only if no data yet
+        if (isLoading && items.length === 0) {
+            return renderLoading('court');
+        }
+        
+        if (!isLoading && items.length === 0) {
+            return <p className="empty-state">No records found for Court Orders.</p>;
+        }
 
         // Transform data for table
         const tableData = items.map((item, index) => {
@@ -719,6 +795,13 @@ export default function IndexViewer() {
 
         return (
             <div className="fade-in">
+                {isStreaming && (
+                    <div style={{ padding: '0.5rem 1rem', background: '#dbeafe', borderRadius: '8px', marginBottom: '1rem', textAlign: 'center' }}>
+                        <span style={{ color: '#1e40af', fontWeight: 600 }}>
+                            ⏳ Loading more data... ({items.length} records loaded so far)
+                        </span>
+                    </div>
+                )}
                 <DataTable 
                     data={tableData} 
                     columns={columns} 
