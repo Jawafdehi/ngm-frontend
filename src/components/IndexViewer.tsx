@@ -357,8 +357,8 @@ export default function IndexViewer() {
 
     if (rootLoading) {
         return (
-            <div className="state-container bounce-in">
-                <div className="spinner"></div>
+            <div className="state-container bounce-in" role="status" aria-live="polite">
+                <div className="spinner" aria-hidden="true"></div>
                 <p>Loading database...</p>
             </div>
         );
@@ -366,8 +366,8 @@ export default function IndexViewer() {
 
     if (rootError) {
         return (
-            <div className="state-container error fade-in">
-                <p className="error-icon">⚠️</p>
+            <div className="state-container error fade-in" role="alert">
+                <p className="error-icon" aria-hidden="true">⚠️</p>
                 <h2>Connection Error</h2>
                 <p>{rootError}</p>
                 <button className="btn-primary" onClick={() => window.location.reload()}>Retry</button>
@@ -375,12 +375,12 @@ export default function IndexViewer() {
         );
     }
 
-    const renderLoading = (tab?: TabKey) => {
+    const renderLoading = useCallback((tab?: TabKey) => {
         const progress = tab ? loadingProgress[tab] : null;
         const streaming = tab ? isStreamingData[tab] : false;
         return (
-            <div className="state-container bounce-in">
-                <div className="spinner"></div>
+            <div className="state-container bounce-in" role="status" aria-live="polite">
+                <div className="spinner" aria-hidden="true"></div>
                 {progress ? (
                     <p>Loading page {progress.current}... {streaming && '(showing results as they arrive)'}</p>
                 ) : (
@@ -388,14 +388,14 @@ export default function IndexViewer() {
                 )}
             </div>
         );
-    };
+    }, [loadingProgress, isStreamingData]);
 
-    const renderKanunPatrika = () => {
+    const renderKanunPatrika = useCallback(() => {
         if (tabLoading.kanun) return renderLoading('kanun');
         if (tabErrors.kanun) {
             return (
-                <div className="state-container error fade-in">
-                    <p className="error-icon">⚠️</p>
+                <div className="state-container error fade-in" role="alert">
+                    <p className="error-icon" aria-hidden="true">⚠️</p>
                     <p>{tabErrors.kanun}</p>
                     <button className="btn-primary" onClick={() => {
                         setTabErrors(prev => ({ ...prev, kanun: null }));
@@ -473,14 +473,14 @@ export default function IndexViewer() {
                 />
             </div>
         );
-    };
+    }, [tabLoading.kanun, tabErrors.kanun, manuscripts.kanun, loadTab]);
 
-    const renderCiaaReports = () => {
+    const renderCiaaReports = useCallback(() => {
         if (tabLoading.ciaa) return renderLoading('ciaa');
         if (tabErrors.ciaa) {
             return (
-                <div className="state-container error fade-in">
-                    <p className="error-icon">⚠️</p>
+                <div className="state-container error fade-in" role="alert">
+                    <p className="error-icon" aria-hidden="true">⚠️</p>
                     <p>{tabErrors.ciaa}</p>
                     <button className="btn-primary" onClick={() => {
                         setTabErrors(prev => ({ ...prev, ciaa: null }));
@@ -578,14 +578,14 @@ export default function IndexViewer() {
                 />
             </div>
         );
-    };
+    }, [tabLoading.ciaa, tabErrors.ciaa, manuscripts.ciaa, loadTab]);
 
-    const renderPressReleases = () => {
+    const renderPressReleases = useCallback(() => {
         if (tabLoading.press) return renderLoading('press');
         if (tabErrors.press) {
             return (
-                <div className="state-container error fade-in">
-                    <p className="error-icon">⚠️</p>
+                <div className="state-container error fade-in" role="alert">
+                    <p className="error-icon" aria-hidden="true">⚠️</p>
                     <p>{tabErrors.press}</p>
                     <button className="btn-primary" onClick={() => {
                         setTabErrors(prev => ({ ...prev, press: null }));
@@ -681,17 +681,17 @@ export default function IndexViewer() {
                 />
             </div>
         );
-    };
+    }, [tabLoading.press, tabErrors.press, manuscripts.press, loadTab]);
 
-    const renderCourtOrders = () => {
+    const renderCourtOrders = useCallback(() => {
         const items = manuscripts.court || [];
         const isLoading = tabLoading.court;
         const isStreaming = isStreamingData.court;
         
         if (tabErrors.court) {
             return (
-                <div className="state-container error fade-in">
-                    <p className="error-icon">⚠️</p>
+                <div className="state-container error fade-in" role="alert">
+                    <p className="error-icon" aria-hidden="true">⚠️</p>
                     <p>{tabErrors.court}</p>
                     <button className="btn-primary" onClick={() => {
                         setTabErrors(prev => ({ ...prev, court: null }));
@@ -812,30 +812,42 @@ export default function IndexViewer() {
                 />
             </div>
         );
-    };
+    }, [tabLoading.court, tabErrors.court, manuscripts.court, isStreamingData.court, loadTab]);
 
     return (
         <div className="index-viewer">
-            <div className="tabs slide-down">
+            <div className="tabs slide-down" role="tablist" aria-label="Document categories">
                 <button
+                    role="tab"
+                    aria-selected={activeTab === 'kanun'}
+                    aria-controls="kanun-panel"
                     className={`tab-btn ${activeTab === 'kanun' ? 'active' : ''}`}
                     onClick={() => setActiveTab('kanun')}
                 >
                     Kanun Patrika
                 </button>
                 <button
+                    role="tab"
+                    aria-selected={activeTab === 'ciaa'}
+                    aria-controls="ciaa-panel"
                     className={`tab-btn ${activeTab === 'ciaa' ? 'active' : ''}`}
                     onClick={() => setActiveTab('ciaa')}
                 >
                     CIAA Annual Reports
                 </button>
                 <button
+                    role="tab"
+                    aria-selected={activeTab === 'press'}
+                    aria-controls="press-panel"
                     className={`tab-btn ${activeTab === 'press' ? 'active' : ''}`}
                     onClick={() => setActiveTab('press')}
                 >
                     CIAA Press Releases
                 </button>
                 <button
+                    role="tab"
+                    aria-selected={activeTab === 'court'}
+                    aria-controls="court-panel"
                     className={`tab-btn ${activeTab === 'court' ? 'active' : ''}`}
                     onClick={() => setActiveTab('court')}
                 >
@@ -844,10 +856,18 @@ export default function IndexViewer() {
             </div>
 
             <div className="content-area">
-                {activeTab === 'kanun' && renderKanunPatrika()}
-                {activeTab === 'ciaa' && renderCiaaReports()}
-                {activeTab === 'press' && renderPressReleases()}
-                {activeTab === 'court' && renderCourtOrders()}
+                <div id="kanun-panel" role="tabpanel" aria-labelledby="kanun-tab" hidden={activeTab !== 'kanun'}>
+                    {activeTab === 'kanun' && renderKanunPatrika()}
+                </div>
+                <div id="ciaa-panel" role="tabpanel" aria-labelledby="ciaa-tab" hidden={activeTab !== 'ciaa'}>
+                    {activeTab === 'ciaa' && renderCiaaReports()}
+                </div>
+                <div id="press-panel" role="tabpanel" aria-labelledby="press-tab" hidden={activeTab !== 'press'}>
+                    {activeTab === 'press' && renderPressReleases()}
+                </div>
+                <div id="court-panel" role="tabpanel" aria-labelledby="court-tab" hidden={activeTab !== 'court'}>
+                    {activeTab === 'court' && renderCourtOrders()}
+                </div>
             </div>
         </div>
     );
