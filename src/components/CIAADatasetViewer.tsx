@@ -3,7 +3,9 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from './DataTable';
 
 // Public R2 base URL for the CIAA dataset
-const R2_BASE = 'https://pub-4c5659ae2e0249e99311f6c50897f48a.r2.dev/test/ciaa_dataset';
+const R2_BASE = import.meta.env.DEV
+  ? '/r2-testing/test/ciaa_dataset'
+  : 'https://pub-4c5659ae2e0249e99311f6c50897f48a.r2.dev/test/ciaa_dataset';
 
 // Known fiscal years to try loading (full year: "2080")
 // Add more as the pipeline produces them
@@ -68,22 +70,28 @@ export default function CIAADatasetViewer() {
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<{ fy: string; total: number; matched: number; needs_review: number; unmatched: number } | null>(null);
 
-  const load = async () => {
+  const load = async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
       const allRows: TableRow[] = [];
       const combinedStats = { total: 0, matched: 0, needs_review: 0, unmatched: 0 };
       let lastFY = '';
+      let hasFirstBatch = false;
 
       for (const fy of KNOWN_FISCAL_YEARS) {
+        if (signal?.aborted) return;
+        
         const url = `${R2_BASE}/ciaa/cases/${fy}/index.json`;
-        const res = await fetch(url);
+        const res = await fetch(url, { signal });
         if (!res.ok) {
           console.warn(`No index for FY ${fy}: ${res.status}`);
           continue;
         }
         const index: FYIndex = await res.json();
+        
+        if (signal?.aborted) return;
+        
         lastFY = index.fiscal_year;
         combinedStats.total += index.stats.total;
         combinedStats.matched += index.stats.matched;
@@ -96,18 +104,17 @@ export default function CIAADatasetViewer() {
         // Filter confirmed cases
         const confirmedCases = index.cases.filter(c => c.match_status === 'confirmed');
         
-        // Stop loading spinner, show progressive data
-        setLoading(false);
-        
         // Batch fetch case details (parallel requests, limit concurrency)
         const BATCH_SIZE = 10; // Fetch 10 at a time
         for (let i = 0; i < confirmedCases.length; i += BATCH_SIZE) {
+          if (signal?.aborted) return;
+          
           const batch = confirmedCases.slice(i, i + BATCH_SIZE);
           
           const batchPromises = batch.map(async (c) => {
             try {
               const caseUrl = `${R2_BASE}/ciaa/cases/${fy}/${c.case_no}.json`;
-              const caseRes = await fetch(caseUrl);
+              const caseRes = await fetch(caseUrl, { signal });
               if (!caseRes.ok) return null;
               
               const caseData = await caseRes.json();
@@ -129,34 +136,50 @@ export default function CIAADatasetViewer() {
                 faisala_links: caseData.court_case?.faisala_link || [],
               };
             } catch (err) {
+              if (err instanceof Error && err.name === 'AbortError') return null;
               console.warn(`Error fetching case ${c.case_no}:`, err);
               return null;
             }
           });
           
           const batchResults = await Promise.all(batchPromises);
+          
+          if (signal?.aborted) return;
+          
           const validResults = batchResults.filter(r => r !== null) as TableRow[];
           allRows.push(...validResults);
           
           // Update rows progressively after each batch
           setRows([...allRows].map((row, idx) => ({ ...row, id: idx + 1 })));
+          
+          // Clear loading after first successful batch
+          if (!hasFirstBatch && validResults.length > 0) {
+            hasFirstBatch = true;
+            setLoading(false);
+          }
         }
       }
+
+      if (signal?.aborted) return;
 
       // Final update
       setRows(allRows.map((row, idx) => ({ ...row, id: idx + 1 })));
       if (allRows.length > 0) {
         setStats({ fy: lastFY, ...combinedStats });
       }
+      setLoading(false);
     } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') return;
       setError(e instanceof Error ? e.message : 'Failed to load CIAA dataset');
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
+    void load(controller.signal);
+    return () => controller.abort();
   }, []);
 
   const columns: ColumnDef<TableRow>[] = [
@@ -201,7 +224,7 @@ export default function CIAADatasetViewer() {
       enableSorting: false,
       cell: (info) => {
         const row = info.row.original;
-        const docs: JSX.Element[] = [];
+        const docs: React.ReactElement[] = [];
         
         // Press Releases
         if (row.press_releases && row.press_releases.length > 0) {
@@ -280,7 +303,7 @@ export default function CIAADatasetViewer() {
       <div className="state-container error fade-in" role="alert">
         <p className="error-icon" aria-hidden="true">⚠️</p>
         <p>{error}</p>
-        <button className="btn-primary" onClick={load}>Retry</button>
+        <button className="btn-primary" onClick={() => void load()}>Retry</button>
       </div>
     );
   }

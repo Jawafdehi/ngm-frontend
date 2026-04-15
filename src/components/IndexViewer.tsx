@@ -253,6 +253,7 @@ export default function IndexViewer() {
     const [rootError, setRootError] = useState<string | null>(null);
     const [tabErrors, setTabErrors] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null, court: null, dataset: null });
     const [activeTab, setActiveTab] = useState<TabKey>('kanun');
+    const [hasVisitedDataset, setHasVisitedDataset] = useState(false);
     const loadingRef = useRef<Set<TabKey>>(new Set());
     const abortControllersRef = useRef<Map<TabKey, AbortController>>(new Map());
 
@@ -876,11 +877,15 @@ export default function IndexViewer() {
                     Court Orders
                 </button>
                 <button
+                    id="dataset-tab"
                     role="tab"
                     aria-selected={activeTab === 'dataset'}
                     aria-controls="dataset-panel"
                     className={`tab-btn ${activeTab === 'dataset' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('dataset')}
+                    onClick={() => {
+                        setActiveTab('dataset');
+                        setHasVisitedDataset(true);
+                    }}
                 >
                     CIAA Cases Dataset
                 </button>
@@ -900,7 +905,7 @@ export default function IndexViewer() {
                     {activeTab === 'court' && renderCourtOrders()}
                 </div>
                 <div id="dataset-panel" role="tabpanel" aria-labelledby="dataset-tab" hidden={activeTab !== 'dataset'}>
-                    {activeTab === 'dataset' && <CIAADatasetViewer />}
+                    {hasVisitedDataset && <CIAADatasetViewer />}
                 </div>
             </div>
         </div>
