@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from './DataTable';
 
@@ -224,7 +225,7 @@ export default function CIAADatasetViewer() {
       enableSorting: false,
       cell: (info) => {
         const row = info.row.original;
-        const docs: React.ReactElement[] = [];
+        const docs: ReactNode[] = [];
         
         // Press Releases
         if (row.press_releases && row.press_releases.length > 0) {
