@@ -18,6 +18,8 @@ interface DataTableProps<TData extends Record<string, unknown>> {
     searchPlaceholder?: string;
     showAdvancedSearch?: boolean;
     onNameSearch?: (rowText: string, nameQuery: string) => boolean;
+    renderExpandedRow?: (row: TData) => React.ReactNode;
+    onRowClick?: (row: TData) => void;
 }
 
 export function DataTable<TData extends Record<string, unknown>>({ 
@@ -26,7 +28,9 @@ export function DataTable<TData extends Record<string, unknown>>({
     pageSize = 20,
     searchPlaceholder = "Search across all fields...",
     showAdvancedSearch = false,
-    onNameSearch
+    onNameSearch,
+    renderExpandedRow,
+    onRowClick
 }: DataTableProps<TData>) {
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -215,13 +219,33 @@ export function DataTable<TData extends Record<string, unknown>>({
                     </thead>
                     <tbody>
                         {table.getRowModel().rows.map((row) => (
-                            <tr key={row.id}>
-                                {row.getVisibleCells().map((cell) => (
-                                    <td key={cell.id}>
-                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                    </td>
-                                ))}
-                            </tr>
+                            <>
+                                <tr 
+                                    key={row.id}
+                                    onClick={() => onRowClick?.(row.original)}
+                                    style={{
+                                        cursor: onRowClick ? 'pointer' : 'default',
+                                        transition: 'background-color 0.15s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (onRowClick) {
+                                            e.currentTarget.style.backgroundColor = '#f9fafb';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (onRowClick) {
+                                            e.currentTarget.style.backgroundColor = '';
+                                        }
+                                    }}
+                                >
+                                    {row.getVisibleCells().map((cell) => (
+                                        <td key={cell.id}>
+                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                        </td>
+                                    ))}
+                                </tr>
+                                {renderExpandedRow && renderExpandedRow(row.original)}
+                            </>
                         ))}
                     </tbody>
                 </table>
