@@ -5,12 +5,22 @@ import { DataTable } from './DataTable';
 
 // Public R2 base URL for the CIAA dataset
 const R2_BASE = import.meta.env.DEV
-  ? '/r2-testing/test/ciaa_dataset'
-  : 'https://pub-4c5659ae2e0249e99311f6c50897f48a.r2.dev/test/ciaa_dataset';
+  ? '/output/ciaa_dataset'  // Local development: use local files
+  : 'https://pub-4c5659ae2e0249e99311f6c50897f48a.r2.dev/test/v2/ciaa_dataset';  // Production: use R2 bucket
 
 // Known fiscal years to try loading (format: "2080-81")
 // Add more as the pipeline produces them
 const KNOWN_FISCAL_YEARS = ['2080-81'];
+
+// Convert Devanagari numerals to English numerals
+const devanagariToEnglish = (str: string): string => {
+  if (!str) return str;
+  const devanagariMap: Record<string, string> = {
+    '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+    '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'
+  };
+  return str.replace(/[०-९]/g, (match) => devanagariMap[match] || match);
+};
 
 interface FYIndexCase {
   case_no: string;
@@ -46,10 +56,20 @@ interface PressRelease {
 }
 
 interface AbhiyogPatra {
-  url: string;
+  url?: string;
+  pdf_url?: string;
+  case_number?: string;
+  title?: string;
+  filing_date?: string;
+  court_office?: string;
 }
 
 interface Defendant {
+  name: string;
+  address?: string;
+}
+
+interface Plaintiff {
   name: string;
   address?: string;
 }
@@ -63,18 +83,25 @@ interface TableRow extends Record<string, unknown> {
   case_url: string;
   registration_date_bs: string;
   registration_date_ad: string;
+  faisala_date_bs?: string;
+  faisala_date_ad?: string;
   defendant_count: number;
   press_release_count: number;
   press_releases: PressRelease[];
   abhiyog_patras: AbhiyogPatra[];
   faisala_links: string[];
   defendants?: Defendant[];
+  plaintiffs?: Plaintiff[];
   appealed_case?: {
     court: string;
     case_no: string;
     registration_date_bs?: string;
     registration_date_ad?: string;
     current_status?: string;
+    faisala_date_bs?: string;
+    faisala_date_ad?: string;
+    defendants?: Defendant[];
+    plaintiffs?: Plaintiff[];
   };
 }
 
@@ -144,12 +171,15 @@ export default function CIAADatasetViewer() {
                 case_url: caseUrl,
                 registration_date_bs: caseData.court_case?.registration_date_bs || 'N/A',
                 registration_date_ad: caseData.court_case?.registration_date_ad || 'N/A',
+                faisala_date_bs: caseData.court_case?.faisala_date_bs || null,
+                faisala_date_ad: caseData.court_case?.faisala_date_ad || null,
                 defendant_count: caseData.court_case?.defendants?.length || 0,
                 press_release_count: (caseData.ciaa?.press_releases || []).length,
                 press_releases: caseData.ciaa?.press_releases || [],
                 abhiyog_patras: caseData.ciaa?.abhiyogPatras || [],
                 faisala_links: caseData.court_case?.faisala_link || [],
                 defendants: caseData.court_case?.defendants || [],
+                plaintiffs: caseData.court_case?.plaintiffs || [],
                 appealed_case: caseData.appealed_case || null,
               };
             } catch (err) {
@@ -302,24 +332,7 @@ export default function CIAADatasetViewer() {
           });
         }
         
-        // Faisala (Court Decision)
-        if (row.faisala_links && row.faisala_links.length > 0) {
-          row.faisala_links.forEach((link: string, idx: number) => {
-            const ext = link.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toUpperCase() || 'DOC';
-            docs.push(
-              <a
-                key={`faisala-${idx}`}
-                href={link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="file-chip doc"
-                onClick={(e) => e.stopPropagation()}
-              >
-                Court Decision ({ext})
-              </a>
-            );
-          });
-        }
+        // Note: Faisala links are now shown in Case Information section
         
         return (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -337,35 +350,20 @@ export default function CIAADatasetViewer() {
       <tr key={`${row.id}-expanded`} style={{ background: '#f9fafb' }}>
         <td colSpan={columns.length} style={{ padding: 0 }}>
           <div style={{ 
-            padding: '1.5rem 2rem', 
+            padding: '1rem 1.5rem', 
             borderTop: '2px solid #e5e7eb',
             animation: 'slide-down 0.2s ease-out'
           }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1.5rem' }}>
               {/* Left Column */}
-              <div>
-                <h4 style={{ 
-                  margin: '0 0 1rem 0', 
-                  color: '#1f2937', 
-                  fontSize: '0.95rem', 
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}>
-                  <span style={{ fontSize: '1.2rem' }}>📋</span>
-                  Case Information
-                </h4>
-                <div style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  gap: '0.75rem', 
-                  fontSize: '0.875rem',
-                  background: '#fff',
-                  padding: '1rem',
-                  borderRadius: '8px',
-                  border: '1px solid #e5e7eb'
-                }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+                {/* Card 1: Case Information */}
+                <div>
+                  <div style={{ fontWeight: 600, color: '#1f2937', marginBottom: '0.4rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span>📋</span> Case Information
+                  </div>
+                  <div style={{ background: '#fff', borderRadius: '6px', border: '1px solid #e5e7eb', padding: '0.75rem', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#6b7280' }}>Registration Date (BS):</span>
                     <span style={{ fontWeight: 500, color: '#111827' }}>{row.registration_date_bs}</span>
@@ -374,112 +372,108 @@ export default function CIAADatasetViewer() {
                     <span style={{ color: '#6b7280' }}>Registration Date (AD):</span>
                     <span style={{ fontWeight: 500, color: '#111827' }}>{row.registration_date_ad}</span>
                   </div>
-                  {row.appealed_case && (
-                    <>
-                      <div style={{ 
-                        borderTop: '1px solid #e5e7eb', 
-                        paddingTop: '0.75rem', 
-                        marginTop: '0.25rem' 
-                      }}>
-                        <div style={{ 
-                          color: '#7c3aed', 
-                          fontWeight: 600, 
-                          marginBottom: '0.5rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem'
-                        }}>
-                          ⚖️ Appealed to Supreme Court
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-                          <span style={{ color: '#6b7280' }}>Appeal Case No:</span>
-                          <span style={{ fontWeight: 500, color: '#7c3aed' }}>{row.appealed_case.case_no}</span>
-                        </div>
-                        {row.appealed_case.registration_date_bs && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-                            <span style={{ color: '#6b7280' }}>Appeal Filed (BS):</span>
-                            <span style={{ fontWeight: 500, color: '#111827' }}>{row.appealed_case.registration_date_bs}</span>
-                          </div>
-                        )}
-                        {row.appealed_case.current_status && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-                            <span style={{ color: '#6b7280' }}>Appeal Status:</span>
-                            <span style={{ 
-                              fontWeight: 500, 
-                              color: '#7c3aed',
-                              background: '#f3e8ff',
-                              padding: '0.125rem 0.5rem',
-                              borderRadius: '4px',
-                              fontSize: '0.8rem'
-                            }}>
-                              {row.appealed_case.current_status}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </>
+                  {row.faisala_date_bs && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#6b7280' }}>Faisala Date (BS):</span>
+                      <span style={{ fontWeight: 500, color: '#111827' }}>{devanagariToEnglish(row.faisala_date_bs)}</span>
+                    </div>
                   )}
-                </div>
-
-                {row.defendants && row.defendants.length > 0 && (
-                  <>
-                    <h4 style={{ 
-                      margin: '1.5rem 0 0.75rem 0', 
-                      color: '#1f2937', 
-                      fontSize: '0.95rem', 
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem'
-                    }}>
-                      <span style={{ fontSize: '1.2rem' }}>👥</span>
-                      Defendants ({row.defendants.length})
-                    </h4>
-                    <div style={{ 
-                      background: '#fff',
-                      padding: '0.75rem',
-                      borderRadius: '8px',
-                      border: '1px solid #e5e7eb',
-                      fontSize: '0.85rem'
-                    }}>
-                      <div style={{ 
-                        display: 'flex', 
-                        flexWrap: 'wrap', 
-                        gap: '0.5rem',
-                        alignItems: 'center'
-                      }}>
-                        {row.defendants.slice(0, 5).map((def, idx) => (
-                          <span 
-                            key={idx} 
-                            style={{ 
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              padding: '0.375rem 0.75rem',
-                              background: '#f3f4f6',
-                              borderRadius: '6px',
-                              border: '1px solid #e5e7eb',
-                              fontWeight: 500,
-                              color: '#111827',
-                              fontSize: '0.85rem'
-                            }}
-                            title={def.address || def.name}
-                          >
-                            {def.name}
-                          </span>
-                        ))}
-                        {row.defendants.length > 5 && (
-                          <span style={{ 
-                            color: '#6b7280', 
-                            fontSize: '0.8rem', 
-                            fontStyle: 'italic',
-                            padding: '0.375rem 0.5rem'
-                          }}>
-                            +{row.defendants.length - 5} more
-                          </span>
-                        )}
+                  {row.faisala_date_ad && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#6b7280' }}>Faisala Date (AD):</span>
+                      <span style={{ fontWeight: 500, color: '#111827' }}>{devanagariToEnglish(row.faisala_date_ad)}</span>
+                    </div>
+                  )}
+                  {row.faisala_links && row.faisala_links.length > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#6b7280' }}>Faisala:</span>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {row.faisala_links.map((link: string, idx: number) => {
+                          const ext = link.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toUpperCase() || 'DOC';
+                          return (
+                            <a key={`faisala-${idx}`} href={link} target="_blank" rel="noopener noreferrer"
+                              className="file-chip doc" style={{ fontSize: '0.75rem', padding: '0.2rem 0.4rem' }}
+                              onClick={(e) => e.stopPropagation()}>
+                              View ({ext})
+                            </a>
+                          );
+                        })}
                       </div>
                     </div>
-                  </>
+                  )}
+                  </div>
+                </div>
+
+                {/* Card 2: Special Court */}
+                {((row.plaintiffs && row.plaintiffs.length > 0) || (row.defendants && row.defendants.length > 0)) && (
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#1f2937', marginBottom: '0.4rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>🏛️</span> Special Court
+                    </div>
+                    <div style={{ background: '#fff', borderRadius: '6px', border: '1px solid #e5e7eb', padding: '0.75rem', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {row.plaintiffs && row.plaintiffs.length > 0 && (
+                      <div>
+                        <div style={{ color: '#6b7280', fontSize: '0.72rem', marginBottom: '0.3rem' }}>⚖️ Plaintiffs ({row.plaintiffs.length})</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                          {row.plaintiffs.map((p, idx) => (
+                            <span key={idx} style={{ padding: '0.2rem 0.45rem', background: '#eff6ff', borderRadius: '4px', border: '1px solid #bfdbfe', fontWeight: 500, color: '#1e40af', fontSize: '0.78rem' }} title={p.address || p.name}>{p.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {row.defendants && row.defendants.length > 0 && (
+                      <div>
+                        <div style={{ color: '#6b7280', fontSize: '0.72rem', marginBottom: '0.3rem' }}>👥 Defendants ({row.defendants.length})</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', maxHeight: '120px', overflowY: 'auto' }}>
+                          {row.defendants.map((d, idx) => (
+                            <span key={idx} style={{ padding: '0.2rem 0.45rem', background: '#f3f4f6', borderRadius: '4px', border: '1px solid #e5e7eb', fontWeight: 500, color: '#111827', fontSize: '0.78rem' }} title={d.address || d.name}>{d.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Card 3: Supreme Court Appeal */}
+                {row.appealed_case && (
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#7c3aed', marginBottom: '0.4rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>⚖️</span> Supreme Court (Appeal)
+                    </div>
+                    <div style={{ background: '#fff', borderRadius: '6px', border: '1px solid #e5e7eb', padding: '0.75rem', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#6b7280' }}>Appeal Case No:</span>
+                      <span style={{ fontWeight: 500, color: '#7c3aed' }}>{row.appealed_case.case_no}</span>
+                    </div>
+                    {row.appealed_case.registration_date_bs && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#6b7280' }}>Appeal Filed (BS):</span>
+                        <span style={{ fontWeight: 500, color: '#111827' }}>{row.appealed_case.registration_date_bs}</span>
+                      </div>
+                    )}
+                    {row.appealed_case.plaintiffs && row.appealed_case.plaintiffs.length > 0 && (
+                      <div>
+                        <div style={{ color: '#6b7280', fontSize: '0.72rem', marginBottom: '0.3rem' }}>⚖️ Plaintiffs ({row.appealed_case.plaintiffs.length})</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                          {row.appealed_case.plaintiffs.map((p, idx) => (
+                            <span key={idx} style={{ padding: '0.2rem 0.45rem', background: '#eff6ff', borderRadius: '4px', border: '1px solid #bfdbfe', fontWeight: 500, color: '#1e40af', fontSize: '0.78rem' }} title={p.address || p.name}>{p.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {row.appealed_case.defendants && row.appealed_case.defendants.length > 0 && (
+                      <div>
+                        <div style={{ color: '#6b7280', fontSize: '0.72rem', marginBottom: '0.3rem' }}>👥 Defendants ({row.appealed_case.defendants.length})</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', maxHeight: '120px', overflowY: 'auto' }}>
+                          {row.appealed_case.defendants.map((d, idx) => (
+                            <span key={idx} style={{ padding: '0.2rem 0.45rem', background: '#f3f4f6', borderRadius: '4px', border: '1px solid #e5e7eb', fontWeight: 500, color: '#111827', fontSize: '0.78rem' }} title={d.address || d.name}>{d.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  </div>
                 )}
               </div>
 
@@ -488,25 +482,25 @@ export default function CIAADatasetViewer() {
                 {row.press_releases && row.press_releases.length > 0 && (
                   <>
                     <h4 style={{ 
-                      margin: '0 0 1rem 0', 
+                      margin: '0 0 0.75rem 0', 
                       color: '#1f2937', 
-                      fontSize: '0.95rem', 
+                      fontSize: '0.875rem', 
                       fontWeight: 600,
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.5rem'
                     }}>
-                      <span style={{ fontSize: '1.2rem' }}>📰</span>
-                      Press Releases ({row.press_releases.length})
+                      <span style={{ fontSize: '1rem' }}>📰</span>
+                      CIAA Press Release{row.press_releases.length > 1 ? 's' : ''} ({row.press_releases.length})
                     </h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       {row.press_releases.map((pr, idx) => (
                         <div key={idx} style={{ 
-                          padding: '1rem', 
+                          padding: '0.75rem', 
                           background: '#fffbeb', 
                           borderRadius: '6px', 
                           border: '1px solid #fde68a',
-                          fontSize: '0.875rem'
+                          fontSize: '0.8rem'
                         }}>
                           <div style={{ marginBottom: '0.5rem' }}>
                             <a 
@@ -523,7 +517,7 @@ export default function CIAADatasetViewer() {
                               }}
                               onClick={(e) => e.stopPropagation()}
                             >
-                              Press Release #{pr.release_id} →
+                              CIAA Press Release #{pr.release_id} →
                             </a>
                           </div>
                           <div style={{ color: '#78350f', lineHeight: '1.4' }}>{pr.title}</div>
@@ -537,6 +531,77 @@ export default function CIAADatasetViewer() {
                               gap: '0.25rem'
                             }}>
                               📅 {pr.date}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {row.abhiyog_patras && row.abhiyog_patras.length > 0 && (
+                  <>
+                    <h4 style={{ 
+                      margin: '1rem 0 0.75rem 0', 
+                      color: '#1f2937', 
+                      fontSize: '0.875rem', 
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <span style={{ fontSize: '1rem' }}>📄</span>
+                      Charge Sheet{row.abhiyog_patras.length > 1 ? 's' : ''} ({row.abhiyog_patras.length})
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {row.abhiyog_patras.map((ap, idx) => (
+                        <div key={idx} style={{ 
+                          padding: '0.75rem', 
+                          background: '#fef2f2', 
+                          borderRadius: '6px', 
+                          border: '1px solid #fecaca',
+                          fontSize: '0.8rem'
+                        }}>
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <a 
+                              href={ap.pdf_url || ap.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              style={{ 
+                                color: '#b91c1c', 
+                                fontWeight: 600,
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem'
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {ap.title || `Charge Sheet ${ap.case_number || ''}`} →
+                            </a>
+                          </div>
+                          {ap.filing_date && (
+                            <div style={{ 
+                              color: '#7f1d1d', 
+                              fontSize: '0.75rem', 
+                              marginTop: '0.5rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}>
+                              📅 Filed: {ap.filing_date}
+                            </div>
+                          )}
+                          {ap.court_office && (
+                            <div style={{ 
+                              color: '#7f1d1d', 
+                              fontSize: '0.75rem', 
+                              marginTop: '0.25rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}>
+                              🏛️ {ap.court_office}
                             </div>
                           )}
                         </div>

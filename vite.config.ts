@@ -17,5 +17,9 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/r2-testing/, ''),
       },
     },
+    fs: {
+      // Allow serving files from parent directory
+      allow: ['..'],
+    },
   },
 })
