@@ -431,6 +431,9 @@ export default function IndexViewer() {
         try {
             // Fetch court node to get years
             const courtRes = await fetch(getProxiedUrl(selectedCourtData.ref), { signal: controller.signal });
+            if (!courtRes.ok) {
+                throw new Error(`HTTP error! status: ${courtRes.status}`);
+            }
             const courtNode: IndexNodeFull = await courtRes.json();
 
             if (!courtNode.children) {
@@ -446,6 +449,36 @@ export default function IndexViewer() {
             console.log('Available years:', courtNode.children.map(c => c.name));
             
             if (courtFilters.startYear || courtFilters.endYear) {
+                // Normalize user input years to full 4-digit format
+                const normalizeYear = (input: string): number => {
+                    // Try Devanagari first
+                    const devanagariMatch = input.match(/[०-९]{4}/);
+                    if (devanagariMatch) {
+                        return parseInt(devanagariToAscii(devanagariMatch[0]), 10);
+                    }
+                    // Try 3-digit format (079 -> 2079)
+                    const threeDigitMatch = input.match(/^\d{3}$/);
+                    if (threeDigitMatch) {
+                        return 2000 + parseInt(input, 10);
+                    }
+                    // Try 4-digit format (2079)
+                    const fourDigitMatch = input.match(/^\d{4}$/);
+                    if (fourDigitMatch) {
+                        return parseInt(input, 10);
+                    }
+                    return NaN;
+                };
+
+                const startYear = courtFilters.startYear ? normalizeYear(courtFilters.startYear) : 0;
+                const endYear = courtFilters.endYear ? normalizeYear(courtFilters.endYear) : 9999;
+
+                if ((courtFilters.startYear && isNaN(startYear)) || (courtFilters.endYear && isNaN(endYear))) {
+                    setTabErrors(prev => ({ ...prev, court: 'Invalid year format. Use 3-digit (079), 4-digit (2079), or Devanagari (२०६७)' }));
+                    setTabLoading(prev => ({ ...prev, court: false }));
+                    setIsStreamingData(prev => ({ ...prev, court: false }));
+                    return;
+                }
+
                 yearsToFetch = courtNode.children.filter(child => {
                     // Extract year from name - could be "079", "080", etc. (3 digits)
                     // or "२०६७" (Devanagari 4 digits)
@@ -465,9 +498,6 @@ export default function IndexViewer() {
                             return false;
                         }
                     }
-                    
-                    const startYear = courtFilters.startYear ? parseInt(courtFilters.startYear, 10) : 0;
-                    const endYear = courtFilters.endYear ? parseInt(courtFilters.endYear, 10) : 9999;
                     
                     console.log('Year filter:', { childName: child.name, year, startYear, endYear, passes: year >= startYear && year <= endYear });
                     
@@ -498,7 +528,8 @@ export default function IndexViewer() {
                         setLoadingProgress(prev => ({ ...prev, court: { current: pageCount, total: 0 } }));
                     },
                     (dataChunk) => {
-                        setManuscripts(prev => ({ ...prev, court: dataChunk }));
+                        // Preserve previously loaded years during progressive updates
+                        setManuscripts(prev => ({ ...prev, court: [...allManuscripts, ...dataChunk] }));
                     },
                     FETCH_CONFIG.MAX_DEPTH,
                     FETCH_CONFIG.MAX_PAGES_PER_YEAR
@@ -864,8 +895,9 @@ export default function IndexViewer() {
                 })
                 .catch(err => {
                     console.error('Failed to load courts - full error:', err);
+                    // Always reset loading state on error, including AbortError
+                    setLoadingCourts(false);
                     if (err.name !== 'AbortError') {
-                        setLoadingCourts(false);
                         setTabErrors(prev => ({ ...prev, court: `Failed to load courts: ${err.message}` }));
                     }
                 });
@@ -875,7 +907,7 @@ export default function IndexViewer() {
                 controller.abort();
             };
         }
-    }, [activeTab, stubs.court, availableCourts.length]);
+    }, [activeTab, stubs.court, availableCourts.length, loadingCourts]);
 
     const renderCourtOrders = useCallback(() => {
         const items = manuscripts.court || [];
@@ -1072,9 +1104,9 @@ export default function IndexViewer() {
                     const year = info.getValue() as string;
                     if (year === 'N/A') return year;
                     // Year is in format "067" (3 digits) -> convert to "2067"
-                    // Remove leading zero if present and add "20" prefix
                     const yearNum = parseInt(year, 10);
-                    return `20${yearNum}`;
+                    // Use numeric addition to handle edge cases like 100 -> 2100
+                    return String(2000 + yearNum);
                 },
             },
             {
@@ -1110,9 +1142,17 @@ export default function IndexViewer() {
                 <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <button
                         onClick={() => {
+                            // Abort in-flight court loading when starting a new search
+                            const existingController = abortControllersRef.current.get('court');
+                            if (existingController) {
+                                existingController.abort();
+                                abortControllersRef.current.delete('court');
+                            }
                             setManuscripts(prev => ({ ...prev, court: [] }));
                             setCourtFilters({ selectedCourt: null, startYear: '', endYear: '' });
                             setTabErrors(prev => ({ ...prev, court: null }));
+                            setTabLoading(prev => ({ ...prev, court: false }));
+                            setIsStreamingData(prev => ({ ...prev, court: false }));
                         }}
                         style={{
                             padding: '0.5rem 1rem',
