@@ -280,6 +280,19 @@ export default function IndexViewer() {
     const loadingRef = useRef<Set<TabKey>>(new Set());
     const abortControllersRef = useRef<Map<TabKey, AbortController>>(new Map());
 
+    // Court filter state
+    const [courtFilters, setCourtFilters] = useState<{
+        selectedCourt: string | null;
+        startYear: string;
+        endYear: string;
+    }>({
+        selectedCourt: null,
+        startYear: '',
+        endYear: '',
+    });
+    const [availableCourts, setAvailableCourts] = useState<{ name: string; ref: string }[]>([]);
+    const [loadingCourts, setLoadingCourts] = useState(false);
+
     // Load root index once
     useEffect(() => {
         const controller = new AbortController();
@@ -382,7 +395,7 @@ export default function IndexViewer() {
     }, [stubs, manuscripts]);
 
     useEffect(() => {
-        if (!rootLoading) {
+        if (!rootLoading && activeTab !== 'court') {
             loadTab(activeTab);
         }
     }, [activeTab, rootLoading, loadTab]);
@@ -395,6 +408,120 @@ export default function IndexViewer() {
             controllers.clear();
         };
     }, []);
+
+    // Fetch filtered court data
+    const fetchFilteredCourtData = useCallback(async () => {
+        if (!courtFilters.selectedCourt) {
+            setTabErrors(prev => ({ ...prev, court: 'Please select a court' }));
+            return;
+        }
+
+        const selectedCourtData = availableCourts.find(c => c.name === courtFilters.selectedCourt);
+        if (!selectedCourtData) return;
+
+        // Clear previous data and errors
+        setManuscripts(prev => ({ ...prev, court: [] }));
+        setTabErrors(prev => ({ ...prev, court: null }));
+        setTabLoading(prev => ({ ...prev, court: true }));
+        setIsStreamingData(prev => ({ ...prev, court: true }));
+
+        const controller = new AbortController();
+        abortControllersRef.current.set('court', controller);
+
+        try {
+            // Fetch court node to get years
+            const courtRes = await fetch(getProxiedUrl(selectedCourtData.ref), { signal: controller.signal });
+            const courtNode: IndexNodeFull = await courtRes.json();
+
+            if (!courtNode.children) {
+                setManuscripts(prev => ({ ...prev, court: [] }));
+                setTabLoading(prev => ({ ...prev, court: false }));
+                setIsStreamingData(prev => ({ ...prev, court: false }));
+                return;
+            }
+
+            // Filter years based on user selection
+            let yearsToFetch = courtNode.children;
+            
+            console.log('Available years:', courtNode.children.map(c => c.name));
+            
+            if (courtFilters.startYear || courtFilters.endYear) {
+                yearsToFetch = courtNode.children.filter(child => {
+                    // Extract year from name - could be "079", "080", etc. (3 digits)
+                    // or "२०६७" (Devanagari 4 digits)
+                    let year: number;
+                    
+                    // Try Devanagari first
+                    const devanagariMatch = child.name.match(/[०-९]{4}/);
+                    if (devanagariMatch) {
+                        year = parseInt(devanagariToAscii(devanagariMatch[0]), 10);
+                    } else {
+                        // Try ASCII 3-digit format (079 -> 2079)
+                        const asciiMatch = child.name.match(/\d{3}/);
+                        if (asciiMatch) {
+                            year = 2000 + parseInt(asciiMatch[0], 10);
+                        } else {
+                            console.log('No year match for:', child.name);
+                            return false;
+                        }
+                    }
+                    
+                    const startYear = courtFilters.startYear ? parseInt(courtFilters.startYear, 10) : 0;
+                    const endYear = courtFilters.endYear ? parseInt(courtFilters.endYear, 10) : 9999;
+                    
+                    console.log('Year filter:', { childName: child.name, year, startYear, endYear, passes: year >= startYear && year <= endYear });
+                    
+                    return year >= startYear && year <= endYear;
+                });
+                
+                console.log('Filtered years:', yearsToFetch.map(y => y.name));
+            }
+
+            if (yearsToFetch.length === 0) {
+                setManuscripts(prev => ({ ...prev, court: [] }));
+                setTabLoading(prev => ({ ...prev, court: false }));
+                setIsStreamingData(prev => ({ ...prev, court: false }));
+                setTabErrors(prev => ({ ...prev, court: 'No data found for the selected filters' }));
+                return;
+            }
+
+            // Fetch manuscripts for filtered years
+            const allManuscripts: Manuscript[] = [];
+            let pageCount = 0;
+
+            for (const yearNode of yearsToFetch) {
+                const yearManuscripts = await fetchAllManuscriptsRecursive(
+                    yearNode.$ref,
+                    controller.signal,
+                    (current) => {
+                        pageCount = current;
+                        setLoadingProgress(prev => ({ ...prev, court: { current: pageCount, total: 0 } }));
+                    },
+                    (dataChunk) => {
+                        setManuscripts(prev => ({ ...prev, court: dataChunk }));
+                    },
+                    FETCH_CONFIG.MAX_DEPTH,
+                    FETCH_CONFIG.MAX_PAGES_PER_YEAR
+                );
+                allManuscripts.push(...yearManuscripts);
+            }
+
+            setManuscripts(prev => ({ ...prev, court: allManuscripts }));
+            setIsStreamingData(prev => ({ ...prev, court: false }));
+            setLoadingProgress(prev => ({ ...prev, court: null }));
+        } catch (err: unknown) {
+            if (err instanceof Error && (err.message === 'Request was cancelled' || err.name === 'AbortError')) {
+                return;
+            }
+            const msg = err instanceof Error ? err.message : 'Failed to load court data';
+            setTabErrors(prev => ({ ...prev, court: msg }));
+            setIsStreamingData(prev => ({ ...prev, court: false }));
+            setLoadingProgress(prev => ({ ...prev, court: null }));
+        } finally {
+            abortControllersRef.current.delete('court');
+            setTabLoading(prev => ({ ...prev, court: false }));
+        }
+    }, [courtFilters, availableCourts]);
 
     // All render functions must be declared before any early returns
     const renderLoading = useCallback((tab?: TabKey) => {
@@ -705,31 +832,200 @@ export default function IndexViewer() {
         );
     }, [tabLoading.press, tabErrors.press, manuscripts.press, loadTab]);
 
+    // Load available courts when court tab is activated
+    useEffect(() => {
+        console.log('Court tab effect:', { activeTab, hasStub: !!stubs.court, courtsLength: availableCourts.length, loadingCourts });
+        if (activeTab === 'court' && stubs.court && availableCourts.length === 0 && !loadingCourts) {
+            console.log('Loading courts from:', stubs.court);
+            setLoadingCourts(true);
+            const controller = new AbortController();
+            
+            fetch(getProxiedUrl(stubs.court), { signal: controller.signal })
+                .then(res => {
+                    console.log('Courts response:', res.status, res.ok);
+                    if (!res.ok) {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
+                    return res.json();
+                })
+                .then((node: IndexNodeFull) => {
+                    console.log('Courts node:', node);
+                    if (node.children) {
+                        const courts = node.children.map(child => ({
+                            name: child.name,
+                            ref: child.$ref
+                        }));
+                        console.log('Setting available courts:', courts);
+                        setAvailableCourts(courts);
+                    } else {
+                        console.warn('No children found in court node');
+                    }
+                    setLoadingCourts(false);
+                })
+                .catch(err => {
+                    console.error('Failed to load courts - full error:', err);
+                    if (err.name !== 'AbortError') {
+                        setLoadingCourts(false);
+                        setTabErrors(prev => ({ ...prev, court: `Failed to load courts: ${err.message}` }));
+                    }
+                });
+            
+            return () => {
+                console.log('Cleanup: aborting court fetch');
+                controller.abort();
+            };
+        }
+    }, [activeTab, stubs.court, availableCourts.length]);
+
     const renderCourtOrders = useCallback(() => {
         const items = manuscripts.court || [];
         const isLoading = tabLoading.court;
         const isStreaming = isStreamingData.court;
         
+        console.log('Render court orders:', { 
+            availableCourts: availableCourts.length, 
+            loadingCourts, 
+            selectedCourt: courtFilters.selectedCourt,
+            items: items.length 
+        });
+        
+        // Filter UI
+        const filterUI = (
+            <div style={{ 
+                padding: '1.5rem', 
+                background: '#f0f4ff', 
+                borderRadius: '12px', 
+                marginBottom: '1.5rem',
+                border: '2px solid #bfdbfe'
+            }}>
+                <h3 style={{ color: '#1e40af', marginBottom: '1rem', fontSize: '1.1rem' }}>🔍 Filter Court Records</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '1rem', alignItems: 'end' }}>
+                    <div>
+                        <label htmlFor="court-select" style={{ display: 'block', color: '#1e40af', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
+                            Court * {loadingCourts && '(Loading...)'}
+                        </label>
+                        <select
+                            id="court-select"
+                            value={courtFilters.selectedCourt || ''}
+                            onChange={(e) => {
+                                console.log('Court selected:', e.target.value);
+                                setCourtFilters(prev => ({ ...prev, selectedCourt: e.target.value || null }));
+                            }}
+                            style={{ 
+                                width: '100%', 
+                                padding: '0.6rem', 
+                                borderRadius: '6px', 
+                                border: '2px solid #bfdbfe',
+                                background: '#ffffff',
+                                fontSize: '0.95rem',
+                                cursor: 'pointer'
+                            }}
+                            disabled={loadingCourts}
+                        >
+                            <option value="">Select a court...</option>
+                            {availableCourts.map(court => (
+                                <option key={court.name} value={court.name}>{court.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="start-year" style={{ display: 'block', color: '#1e40af', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
+                            Start Year (BS)
+                        </label>
+                        <input
+                            id="start-year"
+                            type="text"
+                            placeholder="e.g., 2067"
+                            value={courtFilters.startYear}
+                            onChange={(e) => setCourtFilters(prev => ({ ...prev, startYear: e.target.value }))}
+                            style={{ 
+                                width: '100%', 
+                                padding: '0.6rem', 
+                                borderRadius: '6px', 
+                                border: '2px solid #bfdbfe',
+                                background: '#ffffff',
+                                fontSize: '0.95rem'
+                            }}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="end-year" style={{ display: 'block', color: '#1e40af', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
+                            End Year (BS)
+                        </label>
+                        <input
+                            id="end-year"
+                            type="text"
+                            placeholder="e.g., 2080"
+                            value={courtFilters.endYear}
+                            onChange={(e) => setCourtFilters(prev => ({ ...prev, endYear: e.target.value }))}
+                            style={{ 
+                                width: '100%', 
+                                padding: '0.6rem', 
+                                borderRadius: '6px', 
+                                border: '2px solid #bfdbfe',
+                                background: '#ffffff',
+                                fontSize: '0.95rem'
+                            }}
+                        />
+                    </div>
+                    <button
+                        onClick={() => {
+                            console.log('Search button clicked');
+                            fetchFilteredCourtData();
+                        }}
+                        disabled={!courtFilters.selectedCourt || isLoading}
+                        style={{
+                            padding: '0.6rem 1.5rem',
+                            borderRadius: '6px',
+                            border: 'none',
+                            background: courtFilters.selectedCourt && !isLoading ? '#3b82f6' : '#cbd5e1',
+                            color: 'white',
+                            fontWeight: 600,
+                            cursor: courtFilters.selectedCourt && !isLoading ? 'pointer' : 'not-allowed',
+                            fontSize: '0.95rem',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        {isLoading ? 'Loading...' : 'Search'}
+                    </button>
+                </div>
+                {!courtFilters.selectedCourt && (
+                    <p style={{ color: '#64748b', marginTop: '0.75rem', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                        💡 Select a court to load records. Optionally filter by year range.
+                    </p>
+                )}
+            </div>
+        );
+        
         if (tabErrors.court) {
             return (
-                <div className="state-container error fade-in" role="alert">
-                    <p className="error-icon" aria-hidden="true">⚠️</p>
-                    <p>{tabErrors.court}</p>
-                    <button className="btn-primary" onClick={() => {
-                        setTabErrors(prev => ({ ...prev, court: null }));
-                        loadTab('court');
-                    }}>Retry</button>
-                </div>
+                <>
+                    {filterUI}
+                    <div className="state-container error fade-in" role="alert">
+                        <p className="error-icon" aria-hidden="true">⚠️</p>
+                        <p>{tabErrors.court}</p>
+                    </div>
+                </>
             );
         }
         
         // Show loading only if no data yet
         if (isLoading && items.length === 0) {
-            return renderLoading('court');
+            return (
+                <>
+                    {filterUI}
+                    {renderLoading('court')}
+                </>
+            );
         }
         
         if (!isLoading && items.length === 0) {
-            return <p className="empty-state">No records found for Court Orders.</p>;
+            return (
+                <>
+                    {filterUI}
+                    <p className="empty-state">Select filters above to load court records.</p>
+                </>
+            );
         }
 
         // Transform data for table
@@ -750,7 +1046,6 @@ export default function IndexViewer() {
                 id: index + 1,
                 caseNumber,
                 year,
-                docNumber,
                 fileName: item.file_name,
                 url: item.url,
             };
@@ -780,13 +1075,12 @@ export default function IndexViewer() {
                 size: TABLE_CONFIG.COLUMN_SIZE_LARGE,
                 cell: (info) => {
                     const year = info.getValue() as string;
-                    return year === 'N/A' ? year : `20${year}`;
+                    if (year === 'N/A') return year;
+                    // Year is in format "067" (3 digits) -> convert to "2067"
+                    // Remove leading zero if present and add "20" prefix
+                    const yearNum = parseInt(year, 10);
+                    return `20${yearNum}`;
                 },
-            },
-            {
-                accessorKey: 'docNumber',
-                header: 'Doc #',
-                size: TABLE_CONFIG.COLUMN_SIZE_MEDIUM,
             },
             {
                 accessorKey: 'fileName',
@@ -817,13 +1111,40 @@ export default function IndexViewer() {
 
         return (
             <div className="fade-in">
-                {isStreaming && (
-                    <div style={{ padding: '0.5rem 1rem', background: '#dbeafe', borderRadius: '8px', marginBottom: '1rem', textAlign: 'center' }}>
-                        <span style={{ color: '#1e40af', fontWeight: 600 }}>
-                            ⏳ Loading more data... ({items.length} records loaded so far)
-                        </span>
-                    </div>
-                )}
+                {/* Show filter button when data is loaded */}
+                <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <button
+                        onClick={() => {
+                            setManuscripts(prev => ({ ...prev, court: [] }));
+                            setCourtFilters({ selectedCourt: null, startYear: '', endYear: '' });
+                            setTabErrors(prev => ({ ...prev, court: null }));
+                        }}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            borderRadius: '6px',
+                            border: '2px solid #3b82f6',
+                            background: 'white',
+                            color: '#3b82f6',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#3b82f6';
+                            e.currentTarget.style.color = 'white';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'white';
+                            e.currentTarget.style.color = '#3b82f6';
+                        }}
+                    >
+                        ← New Search
+                    </button>
+                    <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 600 }}>
+                        {items.length} records found
+                    </span>
+                </div>
                 <DataTable 
                     data={tableData} 
                     columns={columns} 
@@ -834,7 +1155,7 @@ export default function IndexViewer() {
                 />
             </div>
         );
-    }, [tabLoading.court, tabErrors.court, manuscripts.court, isStreamingData.court, loadTab]);
+    }, [tabLoading.court, tabErrors.court, manuscripts.court, isStreamingData.court, courtFilters, availableCourts, loadingCourts, fetchFilteredCourtData, renderLoading]);
 
     // Early returns after all hooks are declared
     if (rootLoading) {
