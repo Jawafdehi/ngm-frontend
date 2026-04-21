@@ -13,8 +13,8 @@ import { containsPersonName } from '../data/casesData';
 // Configuration constants
 const FETCH_CONFIG = {
     MAX_PAGES_SIMPLE: 100,
-    MAX_PAGES_RECURSIVE: Infinity, // No limit - fetch everything
-    MAX_PAGES_PER_YEAR: Infinity, // No limit - fetch all pages per year
+    MAX_PAGES_RECURSIVE: 10_000, // Large finite ceiling to prevent unbounded memory growth
+    MAX_PAGES_PER_YEAR: 10_000, // Large finite ceiling for per-year fetches
     MAX_DEPTH: 10, // Deep enough for any reasonable structure
     BATCH_SIZE: 20, // Increased for faster parallel fetching
 } as const;
