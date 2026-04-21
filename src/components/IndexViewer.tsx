@@ -297,6 +297,7 @@ export default function IndexViewer() {
     const [loadingCourts, setLoadingCourts] = useState(false);
     const [availableYears, setAvailableYears] = useState<string[]>([]);
     const [loadingYears, setLoadingYears] = useState(false);
+    const [showCourtResults, setShowCourtResults] = useState(false);
 
     // Load root index once
     useEffect(() => {
@@ -438,6 +439,7 @@ export default function IndexViewer() {
         setTabErrors(prev => ({ ...prev, court: null }));
         setTabLoading(prev => ({ ...prev, court: true }));
         setIsStreamingData(prev => ({ ...prev, court: true }));
+        setShowCourtResults(false);
 
         const controller = new AbortController();
         abortControllersRef.current.set('court', controller);
@@ -488,6 +490,14 @@ export default function IndexViewer() {
 
                 if ((courtFilters.startYear && isNaN(startYear)) || (courtFilters.endYear && isNaN(endYear))) {
                     setTabErrors(prev => ({ ...prev, court: 'Invalid year format. Use 3-digit (079), 4-digit (2079), or Devanagari (२०६७)' }));
+                    setTabLoading(prev => ({ ...prev, court: false }));
+                    setIsStreamingData(prev => ({ ...prev, court: false }));
+                    return;
+                }
+
+                // Validate year range
+                if (courtFilters.startYear && courtFilters.endYear && startYear > endYear) {
+                    setTabErrors(prev => ({ ...prev, court: `Invalid year range: start year (${startYear}) cannot be greater than end year (${endYear})` }));
                     setTabLoading(prev => ({ ...prev, court: false }));
                     setIsStreamingData(prev => ({ ...prev, court: false }));
                     return;
@@ -562,13 +572,18 @@ export default function IndexViewer() {
                     allManuscripts.push(...yearManuscripts);
                 }
                 
-                // Update UI with accumulated results after each batch
-                setManuscripts(prev => ({ ...prev, court: [...allManuscripts] }));
+                // Only update UI every 2 batches or on final batch to reduce re-renders
+                const shouldUpdate = (i + PARALLEL_BATCH_SIZE >= yearsToFetch.length) || ((i / PARALLEL_BATCH_SIZE) % 2 === 1);
+                if (shouldUpdate) {
+                    setManuscripts(prev => ({ ...prev, court: [...allManuscripts] }));
+                }
             }
 
+            // Final update with all manuscripts
             setManuscripts(prev => ({ ...prev, court: allManuscripts }));
             setIsStreamingData(prev => ({ ...prev, court: false }));
             setLoadingProgress(prev => ({ ...prev, court: null }));
+            setShowCourtResults(true);
         } catch (err: unknown) {
             if (err instanceof Error && (err.message === 'Request was cancelled' || err.name === 'AbortError')) {
                 return;
@@ -1142,11 +1157,14 @@ export default function IndexViewer() {
             );
         }
         
-        if (!isLoading && items.length === 0) {
+        // Show filter UI if results are hidden or no data loaded yet
+        if (!showCourtResults || (!isLoading && items.length === 0)) {
             return (
                 <>
                     {filterUI}
-                    <p className="empty-state">Select filters above to load court records.</p>
+                    {!isLoading && items.length === 0 && (
+                        <p className="empty-state">Select filters above to load court records.</p>
+                    )}
                 </>
             );
         }
@@ -1234,18 +1252,11 @@ export default function IndexViewer() {
                 <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <button
                         onClick={() => {
-                            // Abort in-flight court loading when starting a new search
-                            const existingController = abortControllersRef.current.get('court');
-                            if (existingController) {
-                                existingController.abort();
-                                abortControllersRef.current.delete('court');
-                            }
-                            setManuscripts(prev => ({ ...prev, court: [] }));
+                            // Just hide results and show filter UI - don't clear data to preserve DataTable search state
+                            setShowCourtResults(false);
+                            // Optionally reset filters
                             setCourtFilters({ selectedCourt: null, startYear: '', endYear: '' });
                             setAvailableYears([]);
-                            setTabErrors(prev => ({ ...prev, court: null }));
-                            setTabLoading(prev => ({ ...prev, court: false }));
-                            setIsStreamingData(prev => ({ ...prev, court: false }));
                         }}
                         style={{
                             padding: '0.5rem 1rem',
@@ -1283,7 +1294,7 @@ export default function IndexViewer() {
                 />
             </div>
         );
-    }, [tabLoading.court, tabErrors.court, manuscripts.court, isStreamingData.court, courtFilters, availableCourts, availableYears, loadingCourts, loadingYears, fetchFilteredCourtData, renderLoading]);
+    }, [tabLoading.court, tabErrors.court, manuscripts.court, isStreamingData.court, courtFilters, availableCourts, availableYears, loadingCourts, loadingYears, showCourtResults, fetchFilteredCourtData, renderLoading]);
 
     // Early returns after all hooks are declared
     if (rootLoading) {
