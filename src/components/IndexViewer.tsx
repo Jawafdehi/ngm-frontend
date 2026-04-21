@@ -16,7 +16,7 @@ const FETCH_CONFIG = {
     MAX_PAGES_RECURSIVE: Infinity, // No limit - fetch everything
     MAX_PAGES_PER_YEAR: Infinity, // No limit - fetch all pages per year
     MAX_DEPTH: 10, // Deep enough for any reasonable structure
-    BATCH_SIZE: 10,
+    BATCH_SIZE: 20, // Increased for faster parallel fetching
 } as const;
 
 const TABLE_CONFIG = {
@@ -269,7 +269,7 @@ type TabKey = 'kanun' | 'ciaa' | 'press' | 'court';
 
 export default function IndexViewer() {
     const [stubs, setStubs] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null, court: null });
-    const [manuscripts, setManuscripts] = useState<Record<TabKey, Manuscript[] | null>>({ kanun: null, ciaa: null, press: null, court: null });
+    const [manuscripts, setManuscripts] = useState<Record<TabKey, Manuscript[] | null>>({ kanun: null, ciaa: null, press: null, court: [] });
     const [tabLoading, setTabLoading] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false, court: false });
     const [loadingProgress, setLoadingProgress] = useState<Record<TabKey, { current: number; total: number } | null>>({ kanun: null, ciaa: null, press: null, court: null });
     const [isStreamingData, setIsStreamingData] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false, court: false });
@@ -279,6 +279,7 @@ export default function IndexViewer() {
     const [activeTab, setActiveTab] = useState<TabKey>('kanun');
     const loadingRef = useRef<Set<TabKey>>(new Set());
     const abortControllersRef = useRef<Map<TabKey, AbortController>>(new Map());
+    const hasAttemptedLoadRef = useRef<Set<TabKey>>(new Set());
 
     // Court filter state
     const [courtFilters, setCourtFilters] = useState<{
@@ -292,6 +293,8 @@ export default function IndexViewer() {
     });
     const [availableCourts, setAvailableCourts] = useState<{ name: string; ref: string }[]>([]);
     const [loadingCourts, setLoadingCourts] = useState(false);
+    const [availableYears, setAvailableYears] = useState<string[]>([]);
+    const [loadingYears, setLoadingYears] = useState(false);
 
     // Load root index once
     useEffect(() => {
@@ -347,6 +350,7 @@ export default function IndexViewer() {
         setLoadingProgress((prev) => ({ ...prev, [tab]: null }));
         
         loadingRef.current.add(tab);
+        hasAttemptedLoadRef.current.add(tab);
         setTabLoading((prev) => ({ ...prev, [tab]: true }));
         
         const controller = new AbortController();
@@ -395,10 +399,15 @@ export default function IndexViewer() {
     }, [stubs, manuscripts]);
 
     useEffect(() => {
-        if (!rootLoading && activeTab !== 'court') {
-            loadTab(activeTab);
+        // Only auto-load non-court tabs (court tab requires user to apply filters first)
+        // Use ref to prevent re-triggering on every render
+        if (!rootLoading && activeTab !== 'court' && !hasAttemptedLoadRef.current.has(activeTab)) {
+            const ref = stubs[activeTab];
+            if (ref && manuscripts[activeTab] === null) {
+                loadTab(activeTab);
+            }
         }
-    }, [activeTab, rootLoading, loadTab]);
+    }, [activeTab, rootLoading, stubs, manuscripts, loadTab]);
 
     // Cleanup on unmount - abort all pending requests
     useEffect(() => {
@@ -515,26 +524,43 @@ export default function IndexViewer() {
                 return;
             }
 
-            // Fetch manuscripts for filtered years
+            // Fetch manuscripts for filtered years in parallel (faster loading)
             const allManuscripts: Manuscript[] = [];
-            let pageCount = 0;
+            let totalPageCount = 0;
 
-            for (const yearNode of yearsToFetch) {
-                const yearManuscripts = await fetchAllManuscriptsRecursive(
-                    yearNode.$ref,
-                    controller.signal,
-                    (current) => {
-                        pageCount = current;
-                        setLoadingProgress(prev => ({ ...prev, court: { current: pageCount, total: 0 } }));
-                    },
-                    (dataChunk) => {
-                        // Preserve previously loaded years during progressive updates
-                        setManuscripts(prev => ({ ...prev, court: [...allManuscripts, ...dataChunk] }));
-                    },
-                    FETCH_CONFIG.MAX_DEPTH,
-                    FETCH_CONFIG.MAX_PAGES_PER_YEAR
+            // Process years in parallel batches for faster loading
+            const PARALLEL_BATCH_SIZE = 3; // Fetch 3 years at a time
+            
+            for (let i = 0; i < yearsToFetch.length; i += PARALLEL_BATCH_SIZE) {
+                const batch = yearsToFetch.slice(i, i + PARALLEL_BATCH_SIZE);
+                
+                // Fetch all years in this batch in parallel
+                const batchResults = await Promise.all(
+                    batch.map(async (yearNode) => {
+                        let yearPageCount = 0;
+                        const yearManuscripts = await fetchAllManuscriptsRecursive(
+                            yearNode.$ref,
+                            controller.signal,
+                            (current) => {
+                                yearPageCount = current;
+                                totalPageCount++;
+                                setLoadingProgress(prev => ({ ...prev, court: { current: totalPageCount, total: 0 } }));
+                            },
+                            () => {}, // Don't update during individual year fetch to avoid conflicts
+                            FETCH_CONFIG.MAX_DEPTH,
+                            FETCH_CONFIG.MAX_PAGES_PER_YEAR
+                        );
+                        return yearManuscripts;
+                    })
                 );
-                allManuscripts.push(...yearManuscripts);
+                
+                // Add all manuscripts from this batch
+                for (const yearManuscripts of batchResults) {
+                    allManuscripts.push(...yearManuscripts);
+                }
+                
+                // Update UI with accumulated results after each batch
+                setManuscripts(prev => ({ ...prev, court: [...allManuscripts] }));
             }
 
             setManuscripts(prev => ({ ...prev, court: allManuscripts }));
@@ -907,7 +933,60 @@ export default function IndexViewer() {
                 controller.abort();
             };
         }
-    }, [activeTab, stubs.court, availableCourts.length, loadingCourts]);
+    }, [activeTab, stubs.court, availableCourts.length]);
+
+    // Load available years when a court is selected
+    useEffect(() => {
+        if (courtFilters.selectedCourt) {
+            const selectedCourtData = availableCourts.find(c => c.name === courtFilters.selectedCourt);
+            if (selectedCourtData) {
+                setLoadingYears(true);
+                setAvailableYears([]);
+                const controller = new AbortController();
+                
+                fetch(getProxiedUrl(selectedCourtData.ref), { signal: controller.signal })
+                    .then(res => {
+                        if (!res.ok) {
+                            throw new Error(`HTTP error! status: ${res.status}`);
+                        }
+                        return res.json();
+                    })
+                    .then((node: IndexNodeFull) => {
+                        if (node.children) {
+                            // Extract and normalize years
+                            const years = node.children.map(child => {
+                                // Try Devanagari first
+                                const devanagariMatch = child.name.match(/[०-९]{4}/);
+                                if (devanagariMatch) {
+                                    return devanagariToAscii(devanagariMatch[0]);
+                                }
+                                // Try ASCII 3-digit format (079 -> 2079)
+                                const asciiMatch = child.name.match(/\d{3}/);
+                                if (asciiMatch) {
+                                    return String(2000 + parseInt(asciiMatch[0], 10));
+                                }
+                                return null;
+                            }).filter((year): year is string => year !== null)
+                              .sort((a, b) => parseInt(a) - parseInt(b));
+                            
+                            setAvailableYears(years);
+                        }
+                        setLoadingYears(false);
+                    })
+                    .catch(err => {
+                        console.error('Failed to load years:', err);
+                        setLoadingYears(false);
+                        if (err.name !== 'AbortError') {
+                            setTabErrors(prev => ({ ...prev, court: `Failed to load years: ${err.message}` }));
+                        }
+                    });
+                
+                return () => controller.abort();
+            }
+        } else {
+            setAvailableYears([]);
+        }
+    }, [courtFilters.selectedCourt, availableCourts]);
 
     const renderCourtOrders = useCallback(() => {
         const items = manuscripts.court || [];
@@ -961,12 +1040,10 @@ export default function IndexViewer() {
                     </div>
                     <div>
                         <label htmlFor="start-year" style={{ display: 'block', color: '#1e40af', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
-                            Start Year (BS)
+                            Start Year (BS) {loadingYears && '(Loading...)'}
                         </label>
-                        <input
+                        <select
                             id="start-year"
-                            type="text"
-                            placeholder="e.g., 2067"
                             value={courtFilters.startYear}
                             onChange={(e) => setCourtFilters(prev => ({ ...prev, startYear: e.target.value }))}
                             style={{ 
@@ -975,18 +1052,23 @@ export default function IndexViewer() {
                                 borderRadius: '6px', 
                                 border: '2px solid #bfdbfe',
                                 background: '#ffffff',
-                                fontSize: '0.95rem'
+                                fontSize: '0.95rem',
+                                cursor: 'pointer'
                             }}
-                        />
+                            disabled={!courtFilters.selectedCourt || loadingYears}
+                        >
+                            <option value="">All years</option>
+                            {availableYears.map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
                     </div>
                     <div>
                         <label htmlFor="end-year" style={{ display: 'block', color: '#1e40af', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
-                            End Year (BS)
+                            End Year (BS) {loadingYears && '(Loading...)'}
                         </label>
-                        <input
+                        <select
                             id="end-year"
-                            type="text"
-                            placeholder="e.g., 2080"
                             value={courtFilters.endYear}
                             onChange={(e) => setCourtFilters(prev => ({ ...prev, endYear: e.target.value }))}
                             style={{ 
@@ -995,9 +1077,16 @@ export default function IndexViewer() {
                                 borderRadius: '6px', 
                                 border: '2px solid #bfdbfe',
                                 background: '#ffffff',
-                                fontSize: '0.95rem'
+                                fontSize: '0.95rem',
+                                cursor: 'pointer'
                             }}
-                        />
+                            disabled={!courtFilters.selectedCourt || loadingYears}
+                        >
+                            <option value="">All years</option>
+                            {availableYears.map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
                     </div>
                     <button
                         onClick={() => {
@@ -1150,6 +1239,7 @@ export default function IndexViewer() {
                             }
                             setManuscripts(prev => ({ ...prev, court: [] }));
                             setCourtFilters({ selectedCourt: null, startYear: '', endYear: '' });
+                            setAvailableYears([]);
                             setTabErrors(prev => ({ ...prev, court: null }));
                             setTabLoading(prev => ({ ...prev, court: false }));
                             setIsStreamingData(prev => ({ ...prev, court: false }));
@@ -1190,7 +1280,7 @@ export default function IndexViewer() {
                 />
             </div>
         );
-    }, [tabLoading.court, tabErrors.court, manuscripts.court, isStreamingData.court, courtFilters, availableCourts, loadingCourts, fetchFilteredCourtData, renderLoading]);
+    }, [tabLoading.court, tabErrors.court, manuscripts.court, isStreamingData.court, courtFilters, availableCourts, availableYears, loadingCourts, loadingYears, fetchFilteredCourtData, renderLoading]);
 
     // Early returns after all hooks are declared
     if (rootLoading) {
