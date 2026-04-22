@@ -542,6 +542,7 @@ export default function IndexViewer() {
             // Fetch manuscripts for filtered years in parallel (faster loading)
             const allManuscripts: Manuscript[] = [];
             let totalPageCount = 0;
+            let hasShownResults = false; // Track if we've already shown results
 
             // Process years in parallel batches for faster loading
             const PARALLEL_BATCH_SIZE = 3; // Fetch 3 years at a time
@@ -572,6 +573,12 @@ export default function IndexViewer() {
                     allManuscripts.push(...yearManuscripts);
                 }
                 
+                // Show results after first batch to allow partial display
+                if (!hasShownResults && allManuscripts.length > 0) {
+                    setShowCourtResults(true);
+                    hasShownResults = true;
+                }
+                
                 // Only update UI every 2 batches or on final batch to reduce re-renders
                 const shouldUpdate = (i + PARALLEL_BATCH_SIZE >= yearsToFetch.length) || ((i / PARALLEL_BATCH_SIZE) % 2 === 1);
                 if (shouldUpdate) {
@@ -583,7 +590,7 @@ export default function IndexViewer() {
             setManuscripts(prev => ({ ...prev, court: allManuscripts }));
             setIsStreamingData(prev => ({ ...prev, court: false }));
             setLoadingProgress(prev => ({ ...prev, court: null }));
-            setShowCourtResults(true);
+            // setShowCourtResults(true) is already called after first batch
         } catch (err: unknown) {
             if (err instanceof Error && (err.message === 'Request was cancelled' || err.name === 'AbortError')) {
                 return;
