@@ -465,35 +465,9 @@ export default function IndexViewer() {
             console.log('Available years:', courtNode.children.map(c => c.name));
             
             if (courtFilters.startYear || courtFilters.endYear) {
-                // Normalize user input years to full 4-digit format
-                const normalizeYear = (input: string): number => {
-                    // Try Devanagari first
-                    const devanagariMatch = input.match(/[०-९]{4}/);
-                    if (devanagariMatch) {
-                        return parseInt(devanagariToAscii(devanagariMatch[0]), 10);
-                    }
-                    // Try 3-digit format (079 -> 2079)
-                    const threeDigitMatch = input.match(/^\d{3}$/);
-                    if (threeDigitMatch) {
-                        return 2000 + parseInt(input, 10);
-                    }
-                    // Try 4-digit format (2079)
-                    const fourDigitMatch = input.match(/^\d{4}$/);
-                    if (fourDigitMatch) {
-                        return parseInt(input, 10);
-                    }
-                    return NaN;
-                };
-
-                const startYear = courtFilters.startYear ? normalizeYear(courtFilters.startYear) : 0;
-                const endYear = courtFilters.endYear ? normalizeYear(courtFilters.endYear) : 9999;
-
-                if ((courtFilters.startYear && isNaN(startYear)) || (courtFilters.endYear && isNaN(endYear))) {
-                    setTabErrors(prev => ({ ...prev, court: 'Invalid year format. Use 3-digit (079), 4-digit (2079), or Devanagari (२०६७)' }));
-                    setTabLoading(prev => ({ ...prev, court: false }));
-                    setIsStreamingData(prev => ({ ...prev, court: false }));
-                    return;
-                }
+                // Years from dropdown are already normalized to 4-digit ASCII format
+                const startYear = courtFilters.startYear ? parseInt(courtFilters.startYear, 10) : 0;
+                const endYear = courtFilters.endYear ? parseInt(courtFilters.endYear, 10) : 9999;
 
                 // Validate year range
                 if (courtFilters.startYear && courtFilters.endYear && startYear > endYear) {
@@ -575,12 +549,14 @@ export default function IndexViewer() {
                 
                 // Show results after first batch to allow partial display
                 if (!hasShownResults && allManuscripts.length > 0) {
+                    // Update manuscripts state together with showing results to avoid "0 records found" flash
+                    setManuscripts(prev => ({ ...prev, court: [...allManuscripts] }));
                     setShowCourtResults(true);
                     hasShownResults = true;
                 }
                 
-                // Only update UI every 2 batches or on final batch to reduce re-renders
-                const shouldUpdate = (i + PARALLEL_BATCH_SIZE >= yearsToFetch.length) || ((i / PARALLEL_BATCH_SIZE) % 2 === 1);
+                // Only update UI every 2 batches or on final batch to reduce re-renders (skip first batch since it's already updated above)
+                const shouldUpdate = hasShownResults && ((i + PARALLEL_BATCH_SIZE >= yearsToFetch.length) || ((i / PARALLEL_BATCH_SIZE) % 2 === 1));
                 if (shouldUpdate) {
                     setManuscripts(prev => ({ ...prev, court: [...allManuscripts] }));
                 }
