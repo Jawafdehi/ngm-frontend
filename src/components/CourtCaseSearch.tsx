@@ -67,7 +67,7 @@ export default function CourtCaseSearch() {
         setCaseData(null);
 
         try {
-            const endpoint = `/api/ngm/court_case/${selectedCourt}:${caseNumber.trim()}`;
+            const endpoint = `https://portal.jawafdehi.org/api/ngm/court_case/${selectedCourt}:${caseNumber.trim()}`;
             const response = await fetch(endpoint, { signal: controller.signal });
 
             if (!response.ok) {
