@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      '/api/ngm/court_case': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'https://ngm-store.jawafdehi.org',
         changeOrigin: true,
