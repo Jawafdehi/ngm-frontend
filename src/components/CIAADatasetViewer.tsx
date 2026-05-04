@@ -3,14 +3,12 @@ import type { ReactNode } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from './DataTable';
 
-// Public R2 base URL for the CIAA dataset
-const R2_BASE = import.meta.env.DEV
-  ? '/output/ciaa_dataset'  // Local development: use local files
-  : 'https://pub-4c5659ae2e0249e99311f6c50897f48a.r2.dev/test/v2/ciaa_dataset';  // Production: use R2 bucket
+// Base URL for the CIAA dataset
+const CIAA_DATASET_BASE = 'https://ngm-store.jawafdehi.org';
 
 // Known fiscal years to try loading (format: "2080-81")
-// Add more as the pipeline produces them
-const KNOWN_FISCAL_YEARS = ['2080-81'];
+// Add more as the pipeline produces them - ordered newest first
+const KNOWN_FISCAL_YEARS = ['2082-83', '2081-82', '2080-81', '2079-80', '2078-79'];
 
 // Convert Devanagari numerals to English numerals
 const devanagariToEnglish = (str: string): string => {
@@ -119,13 +117,15 @@ export default function CIAADatasetViewer() {
     try {
       const allRows: TableRow[] = [];
       const combinedStats = { total: 0, matched: 0, needs_review: 0, unmatched: 0 };
+      let firstFY = '';
       let lastFY = '';
       let hasFirstBatch = false;
+      const processedFYs: string[] = [];
 
       for (const fy of KNOWN_FISCAL_YEARS) {
         if (signal?.aborted) return;
         
-        const url = `${R2_BASE}/ciaa/cases/${fy}/index.json`;
+        const url = `${CIAA_DATASET_BASE}/uploads/ciaa/cases/${fy}/index.json`;
         const res = await fetch(url, { signal });
         if (!res.ok) {
           console.warn(`No index for FY ${fy}: ${res.status}`);
@@ -135,14 +135,17 @@ export default function CIAADatasetViewer() {
         
         if (signal?.aborted) return;
         
+        processedFYs.push(index.fiscal_year);
+        if (!firstFY) firstFY = index.fiscal_year;
         lastFY = index.fiscal_year;
         combinedStats.total += index.stats.total;
         combinedStats.matched += index.stats.matched;
         combinedStats.needs_review += index.stats.needs_review;
         combinedStats.unmatched += index.stats.unmatched;
 
-        // Set stats immediately
-        setStats({ fy: lastFY, ...combinedStats });
+        // Set stats immediately with range
+        const fyRange = firstFY === lastFY ? firstFY : `${firstFY} to ${lastFY}`;
+        setStats({ fy: fyRange, ...combinedStats });
 
         // Filter confirmed cases
         const confirmedCases = index.cases.filter(c => c.match_status === 'confirmed');
@@ -156,7 +159,7 @@ export default function CIAADatasetViewer() {
           
           const batchPromises = batch.map(async (c) => {
             try {
-              const caseUrl = `${R2_BASE}/ciaa/cases/${fy}/${c.case_no}.json`;
+              const caseUrl = `${CIAA_DATASET_BASE}/uploads/ciaa/cases/${fy}/${c.case_no}.json`;
               const caseRes = await fetch(caseUrl, { signal });
               if (!caseRes.ok) return null;
               
@@ -212,7 +215,8 @@ export default function CIAADatasetViewer() {
       // Final update
       setRows(allRows.map((row, idx) => ({ ...row, id: idx + 1 })));
       if (allRows.length > 0) {
-        setStats({ fy: lastFY, ...combinedStats });
+        const fyRange = firstFY === lastFY ? firstFY : `${firstFY} to ${lastFY}`;
+        setStats({ fy: fyRange, ...combinedStats });
       }
       setLoading(false);
     } catch (e) {
@@ -648,9 +652,9 @@ export default function CIAADatasetViewer() {
           padding: '1rem 1.25rem', background: '#f0fdf4',
           borderBottom: '1px solid #bbf7d0', fontSize: '0.8rem', fontWeight: 600,
         }}>
-          <span style={{ color: '#374151' }}>Fiscal Year {stats.fy}</span>
+          <span style={{ color: '#374151' }}>Fiscal Year{stats.fy.includes('to') ? 's' : ''} {stats.fy}</span>
           <span style={{ color: '#166534' }}>
-            Showing {rows.length} verified cases linked with CIAA data
+            Showing {rows.length} corruption cases with CIAA data
           </span>
         </div>
       )}
