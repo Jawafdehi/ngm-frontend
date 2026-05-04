@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 // Court list for Nepal
 const COURTS = [
@@ -49,6 +49,7 @@ export default function CourtCaseSearch() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [caseData, setCaseData] = useState<CourtCase | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const handleSearch = async () => {
         if (!caseNumber.trim()) {
@@ -56,15 +57,19 @@ export default function CourtCaseSearch() {
             return;
         }
 
+        // Abort any in-flight request
+        abortControllerRef.current?.abort();
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         setLoading(true);
         setError(null);
         setCaseData(null);
 
         try {
             const endpoint = `/api/ngm/court_case/${selectedCourt}:${caseNumber.trim()}`;
-            
-            const response = await fetch(endpoint);
-            
+            const response = await fetch(endpoint, { signal: controller.signal });
+
             if (!response.ok) {
                 if (response.status === 404) {
                     throw new Error(`Case not found: ${selectedCourt}:${caseNumber.trim()}`);
@@ -75,13 +80,18 @@ export default function CourtCaseSearch() {
             const data = await response.json();
             setCaseData(data);
         } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') {
+                return; // Stale request — ignore
+            }
             if (err instanceof TypeError && err.message.includes('fetch')) {
-                setError('Network error: Unable to connect to the server. The backend endpoint may not be available yet.');
+                setError('Network error: Unable to connect to the server.');
             } else {
                 setError(err instanceof Error ? err.message : 'An error occurred while fetching case data');
             }
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) {
+                setLoading(false);
+            }
         }
     };
 

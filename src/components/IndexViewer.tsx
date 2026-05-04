@@ -1020,8 +1020,7 @@ export default function IndexViewer() {
                             id="court-select"
                             value={courtFilters.selectedCourt || ''}
                             onChange={(e) => {
-                                console.log('Court selected:', e.target.value);
-                                setCourtFilters(prev => ({ ...prev, selectedCourt: e.target.value || null }));
+                                setCourtFilters(prev => ({ ...prev, selectedCourt: e.target.value || null, startYear: '', endYear: '' }));
                             }}
                             style={{ 
                                 width: '100%', 
