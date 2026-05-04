@@ -6,6 +6,25 @@ const COURTS = [
     { id: 'special', name: 'Special Court' },
 ];
 
+interface Hearing {
+    id: number;
+    hearing_date_bs?: string;
+    hearing_date_ad?: string;
+    judge_names?: string;
+    lawyer_names?: string;
+    case_status?: string;
+    decision_type?: string;
+    remarks?: string;
+    bench_type?: string;
+}
+
+interface Entity {
+    id: number;
+    name: string;
+    side: string;
+    address?: string;
+}
+
 interface CourtCase {
     case_number: string;
     court_identifier: string;
@@ -15,7 +34,13 @@ interface CourtCase {
     plaintiff?: string;
     defendant?: string;
     case_status?: string;
-    [key: string]: unknown;
+    division?: string;
+    category?: string;
+    section?: string | null;
+    verdict_date_bs?: string | null;
+    verdict_date_ad?: string | null;
+    hearings?: Hearing[];
+    entities?: Entity[];
 }
 
 export default function CourtCaseSearch() {
@@ -137,7 +162,6 @@ export default function CourtCaseSearch() {
                             value={caseNumber}
                             onChange={(e) => setCaseNumber(e.target.value)}
                             onKeyPress={handleKeyPress}
-                            placeholder="e.g., 081-CR-0081"
                             style={{ 
                                 width: '100%', 
                                 padding: '0.6rem', 
@@ -208,35 +232,89 @@ export default function CourtCaseSearch() {
                         📋 Case Details
                     </h3>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        {Object.entries(caseData).map(([key, value]) => (
-                            <div key={key} style={{ 
-                                padding: '0.75rem', 
-                                background: '#f9fafb', 
-                                borderRadius: '6px',
-                                border: '1px solid #e5e7eb'
-                            }}>
-                                <div style={{ 
-                                    color: '#6b7280', 
-                                    fontSize: '0.8rem', 
-                                    marginBottom: '0.25rem',
-                                    textTransform: 'capitalize'
-                                }}>
-                                    {key.replace(/_/g, ' ')}
-                                </div>
-                                <div style={{ 
-                                    color: '#111827', 
-                                    fontSize: '0.95rem', 
-                                    fontWeight: 500 
-                                }}>
-                                    {typeof value === 'object' && value !== null 
-                                        ? JSON.stringify(value, null, 2)
-                                        : String(value || 'N/A')
-                                    }
-                                </div>
+                    {/* Basic Info Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                        {[
+                            { label: 'Case Number', value: caseData.case_number },
+                            { label: 'Court', value: caseData.court_identifier === 'supreme' ? 'Supreme Court' : caseData.court_identifier === 'special' ? 'Special Court' : caseData.court_identifier },
+                            { label: 'Case Type', value: caseData.case_type },
+                            { label: 'Category', value: caseData.category },
+                            { label: 'Division', value: caseData.division },
+                            { label: 'Status', value: caseData.case_status },
+                            { label: 'Plaintiff', value: caseData.plaintiff },
+                            { label: 'Defendant', value: caseData.defendant },
+                            { label: 'Registration Date (BS)', value: caseData.registration_date_bs },
+                            { label: 'Registration Date (AD)', value: caseData.registration_date_ad },
+                            { label: 'Verdict Date (BS)', value: caseData.verdict_date_bs },
+                            { label: 'Verdict Date (AD)', value: caseData.verdict_date_ad },
+                        ].filter(f => f.value).map(({ label, value }) => (
+                            <div key={label} style={{ padding: '0.75rem', background: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                                <div style={{ color: '#6b7280', fontSize: '0.8rem', marginBottom: '0.25rem' }}>{label}</div>
+                                <div style={{ color: '#111827', fontSize: '0.95rem', fontWeight: 500 }}>{String(value)}</div>
                             </div>
                         ))}
                     </div>
+
+                    {/* Entities (Parties) */}
+                    {caseData.entities && caseData.entities.length > 0 && (
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <h4 style={{ color: '#1e40af', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
+                                👥 Parties Involved
+                            </h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                {caseData.entities.map((entity) => (
+                                    <div key={entity.id} style={{ padding: '0.75rem', background: entity.side === 'plaintiff' ? '#f0fdf4' : '#fef2f2', borderRadius: '6px', border: `1px solid ${entity.side === 'plaintiff' ? '#bbf7d0' : '#fecaca'}` }}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: entity.side === 'plaintiff' ? '#15803d' : '#dc2626', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                                            {entity.side === 'plaintiff' ? 'Plaintiff' : 'Defendant'}
+                                        </div>
+                                        <div style={{ color: '#111827', fontWeight: 500 }}>{entity.name}</div>
+                                        {entity.address && <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.25rem' }}>{entity.address}</div>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Hearings */}
+                    {caseData.hearings && caseData.hearings.length > 0 && (
+                        <div>
+                            <h4 style={{ color: '#1e40af', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
+                                🗓 Hearing History ({caseData.hearings.length} hearings)
+                            </h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {caseData.hearings.map((hearing) => (
+                                    <div key={hearing.id} style={{ padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #3b82f6' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                            <div>
+                                                <span style={{ fontWeight: 600, color: '#1e40af' }}>{hearing.hearing_date_bs}</span>
+                                                {hearing.hearing_date_ad && <span style={{ color: '#6b7280', fontSize: '0.85rem', marginLeft: '0.5rem' }}>({hearing.hearing_date_ad})</span>}
+                                            </div>
+                                            {hearing.case_status && (
+                                                <span style={{ background: '#dbeafe', color: '#1e40af', padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 600 }}>
+                                                    {hearing.case_status}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {hearing.decision_type && (
+                                            <div style={{ color: '#374151', fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+                                                <strong>Decision:</strong> {hearing.decision_type}
+                                            </div>
+                                        )}
+                                        {hearing.judge_names && (
+                                            <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
+                                                <strong>Judges:</strong> {hearing.judge_names.replace(/\n/g, ', ')}
+                                            </div>
+                                        )}
+                                        {hearing.remarks && (
+                                            <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
+                                                <strong>Remarks:</strong> {hearing.remarks}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Raw JSON Display */}
                     <details style={{ marginTop: '1.5rem' }}>
