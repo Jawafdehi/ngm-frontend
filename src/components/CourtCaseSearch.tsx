@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 // Court list for Nepal
 const COURTS = [
@@ -50,6 +50,13 @@ export default function CourtCaseSearch() {
     const [error, setError] = useState<string | null>(null);
     const [caseData, setCaseData] = useState<CourtCase | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+
+    useEffect(() => {
+        return () => {
+            abortControllerRef.current?.abort();
+            abortControllerRef.current = null;
+        };
+    }, []);
 
     const handleSearch = async () => {
         if (!caseNumber.trim()) {
@@ -133,7 +140,14 @@ export default function CourtCaseSearch() {
                         <select
                             id="court-select"
                             value={selectedCourt}
-                            onChange={(e) => setSelectedCourt(e.target.value)}
+                            onChange={(e) => {
+                                abortControllerRef.current?.abort();
+                                abortControllerRef.current = null;
+                                setCaseData(null);
+                                setError(null);
+                                setLoading(false);
+                                setSelectedCourt(e.target.value);
+                            }}
                             style={{ 
                                 width: '100%', 
                                 padding: '0.6rem', 
