@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from './DataTable';
@@ -226,17 +226,17 @@ export default function CIAADatasetViewer() {
     }
   };
 
-  const startLoad = () => {
+  const startLoad = useCallback(() => {
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
     void load(controller.signal);
-  };
+  }, []);
 
   useEffect(() => {
     startLoad();
     return () => abortControllerRef.current?.abort();
-  }, []);
+  }, [startLoad]);
 
   const columns: ColumnDef<TableRow>[] = [
     {

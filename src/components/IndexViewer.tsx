@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from './DataTable';
 import CIAADatasetViewer from './CIAADatasetViewer';
+import CourtCaseSearch from './CourtCaseSearch';
 // TODO: Replace with backend metadata extraction when persons data is available
 import { containsPersonName } from '../data/casesData';
 
@@ -266,17 +267,17 @@ const NODE_NAMES = {
     'court-orders': 'court',
 } as const;
 
-type TabKey = 'kanun' | 'ciaa' | 'press' | 'court' | 'dataset';
+type TabKey = 'kanun' | 'ciaa' | 'press' | 'court' | 'dataset' | 'courtcases';
 
 export default function IndexViewer() {
-    const [stubs, setStubs] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null, court: null, dataset: null });
-    const [manuscripts, setManuscripts] = useState<Record<TabKey, Manuscript[] | null>>({ kanun: null, ciaa: null, press: null, court: [], dataset: null });
-    const [tabLoading, setTabLoading] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false, court: false, dataset: false });
-    const [loadingProgress, setLoadingProgress] = useState<Record<TabKey, { current: number; total: number } | null>>({ kanun: null, ciaa: null, press: null, court: null, dataset: null });
-    const [isStreamingData, setIsStreamingData] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false, court: false, dataset: false });
+    const [stubs, setStubs] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null, court: null, dataset: null, courtcases: null });
+    const [manuscripts, setManuscripts] = useState<Record<TabKey, Manuscript[] | null>>({ kanun: null, ciaa: null, press: null, court: [], dataset: null, courtcases: null });
+    const [tabLoading, setTabLoading] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false, court: false, dataset: false, courtcases: false });
+    const [loadingProgress, setLoadingProgress] = useState<Record<TabKey, { current: number; total: number } | null>>({ kanun: null, ciaa: null, press: null, court: null, dataset: null, courtcases: null });
+    const [isStreamingData, setIsStreamingData] = useState<Record<TabKey, boolean>>({ kanun: false, ciaa: false, press: false, court: false, dataset: false, courtcases: false });
     const [rootLoading, setRootLoading] = useState(true);
     const [rootError, setRootError] = useState<string | null>(null);
-    const [tabErrors, setTabErrors] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null, court: null, dataset: null });
+    const [tabErrors, setTabErrors] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null, court: null, dataset: null, courtcases: null });
     const [activeTab, setActiveTab] = useState<TabKey>('kanun');
     const [hasVisitedDataset, setHasVisitedDataset] = useState(false);
     const loadingRef = useRef<Set<TabKey>>(new Set());
@@ -316,7 +317,7 @@ export default function IndexViewer() {
             .then((root) => {
                 if (controller.signal.aborted) return;
                 
-                const refs: Record<TabKey, string | null> = { kanun: null, ciaa: null, press: null, court: null, dataset: null };
+                const refs: Record<TabKey, string | null> = { kanun: null, ciaa: null, press: null, court: null, dataset: null, courtcases: null };
                 for (const child of root.children) {
                     const tab = NODE_NAMES[child.name as keyof typeof NODE_NAMES];
                     if (tab) {
@@ -339,8 +340,8 @@ export default function IndexViewer() {
 
     // Lazy-load manuscripts when a tab is first activated
     const loadTab = useCallback(async (tab: TabKey) => {
-        // Dataset tab doesn't need loading from stubs
-        if (tab === 'dataset') return;
+        // Dataset and courtcases tabs don't need loading from stubs
+        if (tab === 'dataset' || tab === 'courtcases') return;
         
         const ref = stubs[tab];
         if (!ref || manuscripts[tab] !== null || loadingRef.current.has(tab)) return;
@@ -1019,8 +1020,7 @@ export default function IndexViewer() {
                             id="court-select"
                             value={courtFilters.selectedCourt || ''}
                             onChange={(e) => {
-                                console.log('Court selected:', e.target.value);
-                                setCourtFilters(prev => ({ ...prev, selectedCourt: e.target.value || null }));
+                                setCourtFilters(prev => ({ ...prev, selectedCourt: e.target.value || null, startYear: '', endYear: '' }));
                             }}
                             style={{ 
                                 width: '100%', 
@@ -1352,6 +1352,15 @@ export default function IndexViewer() {
                 >
                     CIAA Cases Dataset
                 </button>
+                <button
+                    role="tab"
+                    aria-selected={activeTab === 'courtcases'}
+                    aria-controls="courtcases-panel"
+                    className={`tab-btn ${activeTab === 'courtcases' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('courtcases')}
+                >
+                    Court Cases
+                </button>
             </div>
 
             <div className="content-area">
@@ -1369,6 +1378,9 @@ export default function IndexViewer() {
                 </div>
                 <div id="dataset-panel" role="tabpanel" aria-labelledby="dataset-tab" hidden={activeTab !== 'dataset'}>
                     {hasVisitedDataset && <CIAADatasetViewer />}
+                </div>
+                <div id="courtcases-panel" role="tabpanel" aria-labelledby="courtcases-tab" hidden={activeTab !== 'courtcases'}>
+                    {activeTab === 'courtcases' && <CourtCaseSearch />}
                 </div>
             </div>
         </div>
