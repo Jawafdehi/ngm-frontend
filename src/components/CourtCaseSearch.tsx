@@ -1,9 +1,119 @@
 import { useState, useRef, useEffect } from 'react';
 
-// Court list for Nepal
-const COURTS = [
-    { id: 'supreme', name: 'Supreme Court' },
-    { id: 'special', name: 'Special Court' },
+// Court list for Nepal grouped by type
+const COURT_GROUPS = [
+    {
+        label: 'Supreme / Special',
+        courts: [
+            { id: 'supreme', name: 'Supreme Court' },
+            { id: 'special', name: 'Special Court' },
+        ],
+    },
+    {
+        label: 'High Courts',
+        courts: [
+            { id: 'baglunghc', name: 'Baglung High Court' },
+            { id: 'biratnagarhc', name: 'Biratnagar High Court' },
+            { id: 'birganjhc', name: 'Birgunj High Court' },
+            { id: 'butwalhc', name: 'Butwal High Court' },
+            { id: 'dhankutahc', name: 'Dhankuta High Court' },
+            { id: 'dipayalhc', name: 'Dipayal High Court' },
+            { id: 'hetaudahc', name: 'Hetauda High Court' },
+            { id: 'illamhc', name: 'Illam High Court' },
+            { id: 'janakpurhc', name: 'Janakpur High Court' },
+            { id: 'jumlahc', name: 'Jumla High Court' },
+            { id: 'mahendranagarhc', name: 'Mahendranagar High Court' },
+            { id: 'nepalgunjhc', name: 'Nepalgunj High Court' },
+            { id: 'okhaldhungahc', name: 'Okhaldhungha High Court' },
+            { id: 'patanhc', name: 'Patan High Court' },
+            { id: 'pokharahc', name: 'Pokhara High Court' },
+            { id: 'rajbirajhc', name: 'Rajbiraj High Court' },
+            { id: 'surkhethc', name: 'Surkhet High Court' },
+            { id: 'tulsipurhc', name: 'Tulsipur High Court' },
+        ],
+    },
+    {
+        label: 'District Courts',
+        courts: [
+            { id: 'achhamdc', name: 'Achham District Court' },
+            { id: 'argakhanchidc', name: 'Arghakhanchi District Court' },
+            { id: 'baglungdc', name: 'Baglung District Court' },
+            { id: 'baitadidc', name: 'Baitadi District Court' },
+            { id: 'bajhangdc', name: 'Bajhang District Court' },
+            { id: 'bajuradc', name: 'Bajura District Court' },
+            { id: 'bankedc', name: 'Banke District Court' },
+            { id: 'baradc', name: 'Bara District Court' },
+            { id: 'bardiyadc', name: 'Bardiya District Court' },
+            { id: 'bhaktapurdc', name: 'Bhaktapur District Court' },
+            { id: 'bhojpurdc', name: 'Bhojpur District Court' },
+            { id: 'chitwandc', name: 'Chitwan District Court' },
+            { id: 'dadeldhuradc', name: 'Dadeldhura District Court' },
+            { id: 'dailekhdc', name: 'Dailekh District Court' },
+            { id: 'dangdc', name: 'Dang District Court' },
+            { id: 'darchuladc', name: 'Darchula District Court' },
+            { id: 'dhadingdc', name: 'Dhading District Court' },
+            { id: 'dhankutadc', name: 'Dhankuta District Court' },
+            { id: 'dhanusadc', name: 'Dhanusa District Court' },
+            { id: 'dolakhadc', name: 'Dolakha District Court' },
+            { id: 'dolpadc', name: 'Dolpa District Court' },
+            { id: 'dotidc', name: 'Doti District Court' },
+            { id: 'gorkhadc', name: 'Gorkha District Court' },
+            { id: 'gulmidc', name: 'Gulmi District Court' },
+            { id: 'humladc', name: 'Humla District Court' },
+            { id: 'ilamdc', name: 'Ilam District Court' },
+            { id: 'jajarkotdc', name: 'Jajarkot District Court' },
+            { id: 'jhapadc', name: 'Jhapa District Court' },
+            { id: 'jumladc', name: 'Jumla District Court' },
+            { id: 'kailalidc', name: 'Kailali District Court' },
+            { id: 'kalikotdc', name: 'Kalikot District Court' },
+            { id: 'kanchanpurdc', name: 'Kanchanpur District Court' },
+            { id: 'kapilbastudc', name: 'Kapilbastu District Court' },
+            { id: 'kaskidc', name: 'Kaski District Court' },
+            { id: 'kathmandudc', name: 'Kathmandu District Court' },
+            { id: 'kavrepalanchowkdc', name: 'Kavrepalanchowk District Court' },
+            { id: 'khotangdc', name: 'Khotang District Court' },
+            { id: 'lalitpurdc', name: 'Lalitpur District Court' },
+            { id: 'lamjungdc', name: 'Lamjung District Court' },
+            { id: 'mahottaridc', name: 'Mahottari District Court' },
+            { id: 'makwanpurdc', name: 'Makwanpur District Court' },
+            { id: 'manangdc', name: 'Manang District Court' },
+            { id: 'morangdc', name: 'Morang District Court' },
+            { id: 'mugudc', name: 'Mugu District Court' },
+            { id: 'mustangdc', name: 'Mustang District Court' },
+            { id: 'myagdidc', name: 'Myagdi District Court' },
+            { id: 'nawalparasidc', name: 'Nawalparasi District Court' },
+            { id: 'nawalpurdc', name: 'Nawalpur District Court' },
+            { id: 'nuwakotdc', name: 'Nuwakot District Court' },
+            { id: 'okhaldhungadc', name: 'Okhaldhungha District Court' },
+            { id: 'palpadc', name: 'Palpa District Court' },
+            { id: 'panchthardc', name: 'Panchthar District Court' },
+            { id: 'parbatdc', name: 'Parbat District Court' },
+            { id: 'parsadc', name: 'Parsa District Court' },
+            { id: 'pyuthandc', name: 'Pyuthan District Court' },
+            { id: 'ramechapdc', name: 'Ramechhap District Court' },
+            { id: 'rasuwadc', name: 'Rasuwa District Court' },
+            { id: 'rautahatdc', name: 'Rautahat District Court' },
+            { id: 'rolpadc', name: 'Rolpa District Court' },
+            { id: 'rukumdc', name: 'Rukum District Court' },
+            { id: 'rukumkotdc', name: 'Rukumkot District Court' },
+            { id: 'rupandehidc', name: 'Rupandehi District Court' },
+            { id: 'salyandc', name: 'Salyan District Court' },
+            { id: 'sankhuwasabhadc', name: 'Sankhuwasabha District Court' },
+            { id: 'saptaridc', name: 'Saptari District Court' },
+            { id: 'sarlahidc', name: 'Sarlahi District Court' },
+            { id: 'sindhulidc', name: 'Sindhuli District Court' },
+            { id: 'sindhupalchowkdc', name: 'Sindhupalchowk District Court' },
+            { id: 'sirahadc', name: 'Siraha District Court' },
+            { id: 'solukhumbudc', name: 'Solukhumbu District Court' },
+            { id: 'sunsaridc', name: 'Sunsari District Court' },
+            { id: 'surkhetdc', name: 'Surkhet District Court' },
+            { id: 'syangjadc', name: 'Syangja District Court' },
+            { id: 'tanahundc', name: 'Tanahun District Court' },
+            { id: 'taplejungdc', name: 'Taplejung District Court' },
+            { id: 'therathumdc', name: 'Terhathum District Court' },
+            { id: 'udayapurdc', name: 'Udayapur District Court' },
+        ],
+    },
 ];
 
 interface Hearing {
@@ -44,7 +154,7 @@ interface CourtCase {
 }
 
 export default function CourtCaseSearch() {
-    const [selectedCourt, setSelectedCourt] = useState<string>('supreme');
+    const [selectedCourt, setSelectedCourt] = useState<string>(COURT_GROUPS[0].courts[0].id);
     const [caseNumber, setCaseNumber] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -158,10 +268,14 @@ export default function CourtCaseSearch() {
                                 cursor: 'pointer'
                             }}
                         >
-                            {COURTS.map(court => (
-                                <option key={court.id} value={court.id}>
-                                    {court.name}
-                                </option>
+                            {COURT_GROUPS.map(group => (
+                                <optgroup key={group.label} label={group.label}>
+                                    {group.courts.map(court => (
+                                        <option key={court.id} value={court.id}>
+                                            {court.name}
+                                        </option>
+                                    ))}
+                                </optgroup>
                             ))}
                         </select>
                     </div>
