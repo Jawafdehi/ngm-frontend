@@ -43,6 +43,12 @@ export default defineConfig([
 ])
 ```
 
+## License
+
+[Hippocratic License 3.0](./LICENSE) — an [Ethical Source](https://ethicalsource.dev) license. See [LICENSING.md](./LICENSING.md) for rationale.
+
+---
+
 You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
 ```js
