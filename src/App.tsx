@@ -1,37 +1,27 @@
-import IndexViewer from './components/IndexViewer';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Layout from './components/Layout';
+import LandingPage from './pages/LandingPage';
+import SearchPage from './pages/SearchPage';
+import CaseDetailPage from './pages/CaseDetailPage';
+import BrowsePage from './pages/BrowsePage';
+import DatasetPage from './pages/DatasetPage';
+import StatusPage from './pages/StatusPage';
 import './App.css';
 
 function App() {
   return (
-    <div className="app-container">
-      <header className="app-header glass">
-        <div className="header-content">
-          <div className="logo-group">
-            <h1 className="logo">Nepal Governance Modernization</h1>
-            <span className="version-pill">v1.0</span>
-          </div>
-          <nav>
-            <a href="https://jawafdehi.org" target="_blank" rel="noopener noreferrer" className="nav-link">Jawafdehi</a>
-            <a href="https://nes.jawafdehi.org" target="_blank" rel="noopener noreferrer" className="nav-link">Nepal Entity Service (NES)</a>
-          </nav>
-        </div>
-      </header>
-
-      <main className="main-content">
-        <section className="hero slide-down">
-          <h2>Judicial Data Archive</h2>
-          <p>Explore structured governance and judicial records from Nepal's institutional public endpoints systematically tracked by the NGM Scrapers.</p>
-        </section>
-
-        <section className="dashboard">
-          <IndexViewer />
-        </section>
-      </main>
-
-      <footer className="app-footer">
-        <p>&copy; {new Date().getFullYear()} Jawafdehi.org. Open Data. Open Governance.</p>
-      </footer>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/case/:court/:caseNumber" element={<CaseDetailPage />} />
+          <Route path="/browse" element={<BrowsePage />} />
+          <Route path="/dataset" element={<DatasetPage />} />
+          <Route path="/status" element={<StatusPage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
 
