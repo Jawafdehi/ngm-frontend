@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    'import.meta.env.SENTRY_DSN': JSON.stringify(process.env.SENTRY_DSN || ''),
+  },
   plugins: [react()],
   server: {
     proxy: {
