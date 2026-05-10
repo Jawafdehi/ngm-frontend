@@ -6,6 +6,7 @@ import CaseDetailPage from './pages/CaseDetailPage';
 import BrowsePage from './pages/BrowsePage';
 import DatasetPage from './pages/DatasetPage';
 import StatusPage from './pages/StatusPage';
+import NotFoundPage from './pages/NotFoundPage';
 import './App.css';
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
           <Route path="/browse" element={<BrowsePage />} />
           <Route path="/dataset" element={<DatasetPage />} />
           <Route path="/status" element={<StatusPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

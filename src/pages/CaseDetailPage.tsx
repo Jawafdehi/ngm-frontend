@@ -63,6 +63,7 @@ export default function CaseDetailPage() {
   const { court, caseNumber } = useParams<{ court: string; caseNumber: string }>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isNotFound, setIsNotFound] = useState(false);
   const [caseData, setCaseData] = useState<CourtCase | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -75,13 +76,17 @@ export default function CaseDetailPage() {
 
     setLoading(true);
     setError(null);
+    setIsNotFound(false);
     setCaseData(null);
 
     const endpoint = `https://portal.jawafdehi.org/api/ngm/court_case/${court}:${caseNumber}`;
     fetch(endpoint, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) {
-          if (res.status === 404) throw new Error(`Case not found: ${court}:${caseNumber}`);
+          if (res.status === 404) {
+            setIsNotFound(true);
+            throw new Error(`Case not found: ${court}:${caseNumber}`);
+          }
           throw new Error(`Failed to fetch case: ${res.status}`);
         }
         return res.json();
@@ -113,8 +118,8 @@ export default function CaseDetailPage() {
   if (error) {
     return (
       <div className="state-container error fade-in" role="alert">
-        <p className="error-icon" aria-hidden="true">&#x26A0;&#xFE0F;</p>
-        <h2>Case Not Found</h2>
+        <p className="error-icon" aria-hidden="true">{'\u26A0\uFE0F'}</p>
+        <h2>{isNotFound ? 'Case Not Found' : 'Unable to Load Case'}</h2>
         <p>{error}</p>
         <Link to="/search" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-block' }}>
           Back to Search

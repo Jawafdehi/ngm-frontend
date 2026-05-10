@@ -97,9 +97,13 @@ export default function StatusPage() {
                   if (childRes.ok) {
                     let years: string[] = [];
                     let totalPages = 1;
-                    let childPageUrl: string | undefined = child.$ref;
 
-                    // Collect all years from paginated children
+                    const firstPage: IndexNode = await childRes.json();
+                    if (firstPage.children) {
+                      years.push(...firstPage.children.map((c) => c.name));
+                    }
+                    let childPageUrl: string | undefined = firstPage.next;
+
                     while (childPageUrl) {
                       const pageRes = await fetch(proxy(childPageUrl), { signal: controller.signal });
                       if (!pageRes.ok) break;
@@ -209,13 +213,13 @@ export default function StatusPage() {
       </section>
 
       <section className="status-section">
-        <h3 className="status-section-title">&#x1F4E6; Data Collections</h3>
+        <h3 className="status-section-title">{'\ud83d\udce6'} Data Collections</h3>
         <div className="status-grid">
           {scraperSections.map((s) => (
             <div key={s.name} className="status-card">
               <div className="status-card-header">
                 <span className={`status-badge ${s.status}`}>
-                  {s.status === 'active' ? '&#x2705; Active' : s.status}
+                  {s.status === 'active' ? '\u2705 Active' : s.status}
                 </span>
               </div>
               <h4>{s.name}</h4>
@@ -228,13 +232,13 @@ export default function StatusPage() {
       </section>
 
       <section className="status-section">
-        <h3 className="status-section-title">&#x1F3DB;&#xFE0F; Court Coverage ({courts.length} courts)</h3>
+        <h3 className="status-section-title">{'\ud83c\udfdb\ufe0f'} Court Coverage ({courts.length} courts)</h3>
         <div className="status-grid">
           {courts.map((court) => (
             <div key={court.name} className="status-card">
               <div className="status-card-header">
                 <span className={`status-badge ${court.yearCount > 0 ? 'active' : 'inactive'}`}>
-                  {court.yearCount > 0 ? '&#x2705; Covered' : '&#x26AA; No Data'}
+                  {court.yearCount > 0 ? '\u2705 Covered' : '\u26AA No Data'}
                 </span>
                 <span className="status-badge info">
                   {court.yearCount} year{court.yearCount !== 1 ? 's' : ''}
@@ -247,7 +251,7 @@ export default function StatusPage() {
                 <div className="status-court-detail">
                   {court.gaps.length > 0 && (
                     <p className="gap-warning">
-                      &#x26A0;&#xFE0F; Gap{court.gaps.length > 1 ? 's' : ''}: {court.gaps.slice(0, 10).join(', ')}{court.gaps.length > 10 ? '...' : ''}
+                      {'\u26A0\uFE0F'} Gap{court.gaps.length > 1 ? 's' : ''}: {court.gaps.slice(0, 10).join(', ')}{court.gaps.length > 10 ? '...' : ''}
                     </p>
                   )}
                   <details>
@@ -255,7 +259,7 @@ export default function StatusPage() {
                       View all {court.yearCount} years
                     </summary>
                     <div className="year-chips">
-                      {court.availableYears.slice(-10).map((y) => (
+                      {court.availableYears.map((y) => (
                         <span key={y} className="year-chip" title={yearLabel(y)}>
                           {y}
                         </span>
@@ -270,7 +274,7 @@ export default function StatusPage() {
       </section>
 
       <section className="status-section">
-        <h3 className="status-section-title">&#x1F4C5; Last Scrape Timestamps</h3>
+        <h3 className="status-section-title">{'\ud83d\udcc5'} Last Scrape Timestamps</h3>
         <div className="status-timestamps-note">
           <p>
             Per-court scrape timestamps will be available when the backend

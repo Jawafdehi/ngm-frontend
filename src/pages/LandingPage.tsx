@@ -4,17 +4,17 @@ export default function LandingPage() {
   return (
     <div className="fade-in">
       <section className="hero">
-        <h2>Judicial Data Archive</h2>
+        <h2>Nepal's Open Data Repository</h2>
         <p>
-          Explore structured governance and judicial records from Nepal's
-          institutional public endpoints, systematically tracked by the NGM
-          Scrapers.
+          Accessible, searchable governance and judicial records — systematically
+          tracked from Nepal's institutional public endpoints. Built to empower
+          citizens, journalists, researchers, and accountability advocates.
         </p>
       </section>
 
       <section className="landing-cards">
         <div className="landing-card">
-          <div className="landing-card-icon">&#x1F4CB;</div>
+          <div className="landing-card-icon">{'\ud83d\udccb'}</div>
           <h3>Court Case Search</h3>
           <p>
             Search across all courts of Nepal — Supreme, High Courts, and
@@ -27,7 +27,7 @@ export default function LandingPage() {
         </div>
 
         <div className="landing-card">
-          <div className="landing-card-icon">&#x1F4DA;</div>
+          <div className="landing-card-icon">{'\ud83d\udcda'}</div>
           <h3>Document Archive</h3>
           <p>
             Browse Kanun Patrika, CIAA Annual Reports, CIAA Press Releases,
@@ -39,7 +39,7 @@ export default function LandingPage() {
         </div>
 
         <div className="landing-card">
-          <div className="landing-card-icon">&#x1F4CA;</div>
+          <div className="landing-card-icon">{'\ud83d\udcca'}</div>
           <h3>Dataset Viewer</h3>
           <p>
             Explore the structured CIAA corruption cases dataset with
@@ -52,11 +52,11 @@ export default function LandingPage() {
         </div>
 
         <div className="landing-card">
-          <div className="landing-card-icon">&#x1F4E1;</div>
-          <h3>Scraper Status</h3>
+          <div className="landing-card-icon">{'\ud83d\udce1'}</div>
+          <h3>Pipeline Status</h3>
           <p>
-            Monitor per-court coverage, last scrape timestamps, and data gap
-            indicators. Transparency into our data pipeline health.
+            Monitor per-court coverage and data pipeline health. Track which
+            Nepali courts are indexed and identify gaps in the archive.
           </p>
           <Link to="/status" className="landing-card-link">
             Check Status &rarr;

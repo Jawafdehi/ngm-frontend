@@ -945,13 +945,13 @@
   gap: 1rem;
 }
 
-.pagination-controls {
+.table-pagination .pagination-controls {
   display: flex;
   align-items: center;
   gap: 0.375rem;
 }
 
-.pagination-btn {
+.table-pagination .pagination-btn {
   padding: 0.375rem 0.75rem;
   background: #ffffff;
   color: #1e293b;
@@ -964,19 +964,19 @@
   white-space: nowrap;
 }
 
-.pagination-btn:hover:not(:disabled) {
+.table-pagination .pagination-btn:hover:not(:disabled) {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
   transform: translateY(-1px);
 }
 
-.pagination-btn:disabled {
+.table-pagination .pagination-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.pagination-info {
+.table-pagination .pagination-info {
   font-size: 0.8rem;
   font-weight: 600;
   color: #1e293b;

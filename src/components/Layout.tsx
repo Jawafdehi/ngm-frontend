@@ -9,9 +9,8 @@ export default function Layout() {
         <div className="header-content">
           <div className="logo-group">
             <Link to="/" className="logo" style={{ textDecoration: 'none' }}>
-              Nepal Governance Modernization
+              NGM
             </Link>
-            <span className="version-pill">v1.1</span>
           </div>
           <nav className="header-nav">
             <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}>
@@ -20,8 +19,11 @@ export default function Layout() {
             <Link to="/browse" className={`nav-link ${location.pathname.startsWith('/browse') ? 'active' : ''}`}>
               Archive
             </Link>
-            <Link to="/search" className={`nav-link ${location.pathname === '/search' ? 'active' : ''}`}>
+            <Link to="/search" className={`nav-link ${location.pathname.startsWith('/search') || location.pathname.startsWith('/case') ? 'active' : ''}`}>
               Court Cases
+            </Link>
+            <Link to="/dataset" className={`nav-link ${location.pathname === '/dataset' ? 'active' : ''}`}>
+              Dataset
             </Link>
             <Link to="/status" className={`nav-link ${location.pathname === '/status' ? 'active' : ''}`}>
               Status
