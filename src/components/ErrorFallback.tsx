@@ -7,6 +7,7 @@ const ErrorFallback: FallbackRender = ({ error, resetError }) => {
       <header className="app-header glass">
         <div className="header-content">
           <div className="logo-group">
+            <img src="/ngm-icon.svg" alt="NGM" className="logo-icon" width="36" height="36" />
             <h1 className="logo">Nepal Governance Modernization</h1>
             <span className="version-pill">v1.0</span>
           </div>
@@ -23,16 +24,18 @@ const ErrorFallback: FallbackRender = ({ error, resetError }) => {
           <div className="state-container error" style={{ maxWidth: '720px', margin: '0 auto' }}>
             <div className="state-icon">&#9888;</div>
             <h3 className="state-title">Application Error</h3>
-            <pre className="state-detail" style={{
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              maxHeight: '200px',
-              overflow: 'auto',
-              fontSize: '0.8rem',
-              opacity: 0.7,
-            }}>
-              {message}
-            </pre>
+            {import.meta.env.DEV && (
+              <pre className="state-detail" style={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                maxHeight: '200px',
+                overflow: 'auto',
+                fontSize: '0.8rem',
+                opacity: 0.7,
+              }}>
+                {message}
+              </pre>
+            )}
             <button className="retry-button" onClick={resetError} style={{ marginTop: '1rem' }}>
               Try Again
             </button>
