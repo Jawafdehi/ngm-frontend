@@ -8,6 +8,7 @@ export default function Layout() {
       <header className="app-header glass">
         <div className="header-content">
           <div className="logo-group">
+            <img src="/ngm-icon.svg" alt="NGM" className="logo-icon" width="36" height="36" />
             <Link to="/" className="logo" style={{ textDecoration: 'none' }}>
               NGM
             </Link>
