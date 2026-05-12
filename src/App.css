@@ -34,6 +34,12 @@
   gap: 1rem;
 }
 
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
 .logo {
   font-size: 1.25rem;
   font-weight: 700;

@@ -7,6 +7,7 @@ function App() {
       <header className="app-header glass">
         <div className="header-content">
           <div className="logo-group">
+            <img src="/ngm-icon.svg" alt="NGM" className="logo-icon" width="36" height="36" />
             <h1 className="logo">Nepal Governance Modernization</h1>
             <span className="version-pill">v1.0</span>
           </div>
