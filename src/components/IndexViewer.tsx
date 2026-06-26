@@ -32,10 +32,18 @@ const TABLE_CONFIG = {
 } as const;
 
 // NGM Index v2.0 types - Tree-based hierarchical index
+type LinkRole = 'RAW' | 'ALTERNATE' | 'SOURCE_PAGE' | 'MARKDOWN' | 'PERMALINK';
+type SourceLink = { link: string; role: LinkRole };
 type Manuscript = {
-    url: string;
+    url: string; // back-compat alias for the primary RAW file
     file_name: string;
     metadata: Record<string, unknown>;
+    // NGM Index v2: one logical document per manuscript, carrying roled links.
+    // `links`/`document_id`/`source_type` are absent on legacy index snapshots,
+    // so all readers fall back to `url` (see fileLinks/primaryUrl below).
+    links?: SourceLink[];
+    document_id?: string;
+    source_type?: string;
 };
 
 type IndexNodeStub = {
@@ -85,6 +93,31 @@ function getProxiedUrl(url: string): string {
         return url.replace('https://ngm-store.jawafdehi.org', '/api');
     }
     return url;
+}
+
+/** Downloadable file links (RAW first, then ALTERNATE). Falls back to the legacy
+ *  single `url` when an older index snapshot has no `links`. */
+function fileLinks(m: Manuscript): SourceLink[] {
+    const roled = (m.links ?? []).filter((l) => l.role === 'RAW' || l.role === 'ALTERNATE');
+    if (roled.length > 0) {
+        return [...roled].sort((a, b) => Number(b.role === 'RAW') - Number(a.role === 'RAW'));
+    }
+    return m.url ? [{ link: m.url, role: 'RAW' }] : [];
+}
+
+/** First link with the given role, if any (e.g. SOURCE_PAGE, MARKDOWN). */
+function linkByRole(m: Manuscript, role: LinkRole): string | undefined {
+    return m.links?.find((l) => l.role === role)?.link;
+}
+
+/** Primary downloadable URL (RAW), with legacy `url` fallback. */
+function primaryUrl(m: Manuscript): string {
+    return fileLinks(m)[0]?.link ?? m.url ?? '';
+}
+
+/** Uppercase file extension parsed from a URL (e.g. "PDF", "DOCX"). */
+function extFromUrl(u: string): string {
+    return u.match(/\.([A-Za-z0-9]+)(?:[?#]|$)/)?.[1]?.toUpperCase() || 'FILE';
 }
 
 /** Fetch all manuscripts for a node, following pagination via `next` links. */
@@ -620,7 +653,7 @@ export default function IndexViewer() {
             id: index + 1,
             fileName: item.file_name.replace('.pdf', ''),
             year: extractYear(item.file_name) || 'N/A',
-            url: item.url,
+            url: primaryUrl(item),
         }));
 
         // Define columns
@@ -729,7 +762,7 @@ export default function IndexViewer() {
                     serialNumber: meta?.serial_number || 'N/A',
                     title: meta?.title || item.file_name,
                     date: meta?.date || 'Unknown Date',
-                    url: item.url,
+                    url: primaryUrl(item),
                 };
             });
 
@@ -805,32 +838,37 @@ export default function IndexViewer() {
         const items = manuscripts.press || [];
         if (items.length === 0) return <p className="empty-state">No records found for CIAA Press Releases.</p>;
 
-        // Group manuscripts by press_id
-        const grouped = new Map<string, { pressId: number | null; meta: Record<string, unknown>; files: Manuscript[] }>();
+        // NGM Index v2 emits ONE consolidated manuscript per press release (its
+        // attachments are in `links`), so no client-side grouping is needed.
+        // De-duplicate by press_id anyway to tolerate legacy snapshots that still
+        // emit one manuscript per attachment, merging their links.
+        const byPressId = new Map<string, Manuscript>();
         for (const item of items) {
             const parsed = Number(item.metadata?.press_id);
             const hasValidPressId = Number.isFinite(parsed) && parsed > 0;
-            const groupKey = hasValidPressId ? `press:${parsed}` : `file:${item.url}`;
-            if (!grouped.has(groupKey)) {
-                grouped.set(groupKey, {
-                    pressId: hasValidPressId ? parsed : null,
-                    meta: item.metadata,
-                    files: [],
-                });
+            const key = hasValidPressId ? `press:${parsed}` : `file:${item.url}`;
+            const existing = byPressId.get(key);
+            if (!existing) {
+                byPressId.set(key, { ...item });
+            } else {
+                existing.links = [...fileLinks(existing), ...fileLinks(item)];
             }
-            grouped.get(groupKey)!.files.push(item);
         }
 
-        // Transform data for table
-        const tableData = [...grouped.entries()]
-            .sort(([, a], [, b]) => (b.pressId ?? -Infinity) - (a.pressId ?? -Infinity))
-            .map(([, { pressId, meta, files }]) => ({
-                pressId: pressId ?? 0,
-                title: String(meta?.title || `Press Release ${pressId ? `#${pressId}` : '(Unknown)'}`),
-                date: String(meta?.publication_date || 'N/A'),
-                fileCount: files.length,
-                files: files,
-            }));
+        // Transform data for table — one row per release.
+        const tableData = [...byPressId.values()]
+            .map((item) => {
+                const meta = item.metadata as Record<string, unknown>;
+                const parsed = Number(meta?.press_id);
+                const pressId = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+                return {
+                    pressId,
+                    title: String(meta?.title || `Press Release ${pressId ? `#${pressId}` : '(Unknown)'}`),
+                    date: String(meta?.publication_date || 'N/A'),
+                    item,
+                };
+            })
+            .sort((a, b) => b.pressId - a.pressId);
 
         // Define columns
         const columns: ColumnDef<typeof tableData[0]>[] = [
@@ -855,25 +893,43 @@ export default function IndexViewer() {
                 size: TABLE_CONFIG.COLUMN_SIZE_XXXLARGE,
                 enableColumnFilter: false,
                 enableSorting: false,
-                cell: (info) => (
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                        {info.row.original.files.map((file, i) => {
-                            const ext = file.file_name.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toUpperCase() || 'FILE';
-                            return (
-                                <a
-                                    key={file.url}
-                                    href={file.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={`file-chip ${ext === 'PDF' ? 'pdf' : ext === 'DOC' || ext === 'DOCX' ? 'doc' : 'default'}`}
-                                    style={{ fontSize: '0.7rem', padding: '3px 8px' }}
-                                >
-                                    {ext} {i + 1}
+                cell: (info) => {
+                    const m = info.row.original.item;
+                    const files = fileLinks(m);
+                    const transcript = linkByRole(m, 'MARKDOWN');
+                    const source = linkByRole(m, 'SOURCE_PAGE');
+                    return (
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {files.map((file, i) => {
+                                const ext = extFromUrl(file.link);
+                                return (
+                                    <a
+                                        key={file.link}
+                                        href={file.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`file-chip ${ext === 'PDF' ? 'pdf' : ext === 'DOC' || ext === 'DOCX' ? 'doc' : 'default'}`}
+                                        style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                                    >
+                                        {ext}{files.length > 1 ? ` ${i + 1}` : ''}
+                                    </a>
+                                );
+                            })}
+                            {transcript && (
+                                <a key="transcript" href={transcript} target="_blank" rel="noopener noreferrer"
+                                    className="file-chip default" style={{ fontSize: '0.7rem', padding: '3px 8px' }}>
+                                    TEXT
                                 </a>
-                            );
-                        })}
-                    </div>
-                ),
+                            )}
+                            {source && (
+                                <a key="source" href={source} target="_blank" rel="noopener noreferrer"
+                                    className="file-chip default" style={{ fontSize: '0.7rem', padding: '3px 8px' }}>
+                                    Source
+                                </a>
+                            )}
+                        </div>
+                    );
+                },
             },
         ];
 
@@ -1167,7 +1223,7 @@ export default function IndexViewer() {
                 caseNumber,
                 year,
                 fileName: item.file_name,
-                url: item.url,
+                item,
             };
         });
 
@@ -1184,7 +1240,7 @@ export default function IndexViewer() {
                 header: 'Case Number',
                 size: TABLE_CONFIG.COLUMN_SIZE_XXLARGE,
                 cell: (info) => (
-                    <a href={info.row.original.url} target="_blank" rel="noopener noreferrer">
+                    <a href={primaryUrl(info.row.original.item)} target="_blank" rel="noopener noreferrer">
                         {info.getValue() as string}
                     </a>
                 ),
@@ -1213,17 +1269,25 @@ export default function IndexViewer() {
                 enableColumnFilter: false,
                 enableSorting: false,
                 cell: (info) => {
-                    const ext = info.row.original.fileName.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toUpperCase() || 'FILE';
+                    const files = fileLinks(info.row.original.item);
                     return (
-                        <a 
-                            href={info.row.original.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className={`file-chip ${ext === 'PDF' ? 'pdf' : ext === 'DOC' || ext === 'DOCX' ? 'doc' : 'default'}`}
-                            style={{ textDecoration: 'none' }}
-                        >
-                            View {ext}
-                        </a>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {files.map((f, i) => {
+                                const ext = extFromUrl(f.link);
+                                return (
+                                    <a
+                                        key={f.link}
+                                        href={f.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`file-chip ${ext === 'PDF' ? 'pdf' : ext === 'DOC' || ext === 'DOCX' ? 'doc' : 'default'}`}
+                                        style={{ textDecoration: 'none' }}
+                                    >
+                                        {ext}{files.length > 1 ? ` ${i + 1}` : ''}
+                                    </a>
+                                );
+                            })}
+                        </div>
                     );
                 },
             },
