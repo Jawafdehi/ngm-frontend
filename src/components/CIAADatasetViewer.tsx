@@ -257,7 +257,7 @@ export default function CIAADatasetViewer() {
             target="_blank" 
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }}
+            style={{ color: 'var(--navy)', textDecoration: 'none', fontWeight: 500 }}
           >
             {info.getValue() as string}
           </a>
@@ -420,7 +420,7 @@ export default function CIAADatasetViewer() {
                         <div style={{ color: '#6b7280', fontSize: '0.72rem', marginBottom: '0.3rem' }}>⚖️ Plaintiffs ({row.plaintiffs.length})</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                           {row.plaintiffs.map((p, idx) => (
-                            <span key={idx} style={{ padding: '0.2rem 0.45rem', background: '#eff6ff', borderRadius: '4px', border: '1px solid #bfdbfe', fontWeight: 500, color: '#1e40af', fontSize: '0.78rem' }} title={p.address || p.name}>{p.name}</span>
+                            <span key={idx} style={{ padding: '0.2rem 0.45rem', background: 'var(--bg-tint)', borderRadius: '4px', border: '1px solid var(--border-cool)', fontWeight: 500, color: 'var(--navy)', fontSize: '0.78rem' }} title={p.address || p.name}>{p.name}</span>
                           ))}
                         </div>
                       </div>
@@ -461,7 +461,7 @@ export default function CIAADatasetViewer() {
                         <div style={{ color: '#6b7280', fontSize: '0.72rem', marginBottom: '0.3rem' }}>⚖️ Plaintiffs ({row.appealed_case.plaintiffs.length})</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                           {row.appealed_case.plaintiffs.map((p, idx) => (
-                            <span key={idx} style={{ padding: '0.2rem 0.45rem', background: '#eff6ff', borderRadius: '4px', border: '1px solid #bfdbfe', fontWeight: 500, color: '#1e40af', fontSize: '0.78rem' }} title={p.address || p.name}>{p.name}</span>
+                            <span key={idx} style={{ padding: '0.2rem 0.45rem', background: 'var(--bg-tint)', borderRadius: '4px', border: '1px solid var(--border-cool)', fontWeight: 500, color: 'var(--navy)', fontSize: '0.78rem' }} title={p.address || p.name}>{p.name}</span>
                           ))}
                         </div>
                       </div>

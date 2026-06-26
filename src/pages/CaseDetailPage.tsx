@@ -172,7 +172,7 @@ export default function CaseDetailPage() {
 
         {caseData.entities && caseData.entities.length > 0 && (
           <div style={{ marginBottom: '1.5rem' }}>
-            <h4 style={{ color: '#1e40af', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
+            <h4 style={{ color: 'var(--navy)', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
               &#x1F465; Parties Involved
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
@@ -198,22 +198,22 @@ export default function CaseDetailPage() {
 
         {caseData.hearings && caseData.hearings.length > 0 && (
           <div>
-            <h4 style={{ color: '#1e40af', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
+            <h4 style={{ color: 'var(--navy)', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
               &#x1F5D3; Hearing History ({caseData.hearings.length} hearings)
             </h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {caseData.hearings.map((hearing) => (
                 <div key={hearing.id} style={{
                   padding: '1rem', background: '#f8fafc', borderRadius: '8px',
-                  border: '1px solid #e2e8f0', borderLeft: '4px solid #3b82f6',
+                  border: '1px solid #e2e8f0', borderLeft: '4px solid var(--navy)',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <div>
-                      <span style={{ fontWeight: 600, color: '#1e40af' }}>{hearing.hearing_date_bs}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--navy)' }}>{hearing.hearing_date_bs}</span>
                       {hearing.hearing_date_ad && <span style={{ color: '#6b7280', fontSize: '0.85rem', marginLeft: '0.5rem' }}>({hearing.hearing_date_ad})</span>}
                     </div>
                     {hearing.case_status && (
-                      <span style={{ background: '#dbeafe', color: '#1e40af', padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 600 }}>
+                      <span style={{ background: 'var(--bg-tint)', color: 'var(--navy)', padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 600 }}>
                         {hearing.case_status}
                       </span>
                     )}
@@ -240,7 +240,7 @@ export default function CaseDetailPage() {
         )}
 
         <details style={{ marginTop: '1.5rem' }}>
-          <summary style={{ cursor: 'pointer', color: '#3b82f6', fontWeight: 600, fontSize: '0.9rem' }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--navy)', fontWeight: 600, fontSize: '0.9rem' }}>
             View Raw JSON
           </summary>
           <pre style={{

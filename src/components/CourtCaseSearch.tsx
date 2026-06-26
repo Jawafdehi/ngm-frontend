@@ -226,9 +226,9 @@ export default function CourtCaseSearch() {
                 background: '#f0f4ff', 
                 borderRadius: '12px', 
                 marginBottom: '1.5rem',
-                border: '2px solid #bfdbfe'
+                border: '2px solid var(--border-cool)'
             }}>
-                <h3 style={{ color: '#1e40af', marginBottom: '1rem', fontSize: '1.1rem' }}>
+                <h3 style={{ color: 'var(--navy)', marginBottom: '1rem', fontSize: '1.1rem' }}>
                     🔍 Search Court Cases
                 </h3>
                 
@@ -239,7 +239,7 @@ export default function CourtCaseSearch() {
                             htmlFor="court-select" 
                             style={{ 
                                 display: 'block', 
-                                color: '#1e40af', 
+                                color: 'var(--navy)', 
                                 marginBottom: '0.5rem', 
                                 fontSize: '0.9rem', 
                                 fontWeight: 600 
@@ -262,7 +262,7 @@ export default function CourtCaseSearch() {
                                 width: '100%', 
                                 padding: '0.6rem', 
                                 borderRadius: '6px', 
-                                border: '2px solid #bfdbfe',
+                                border: '2px solid var(--border-cool)',
                                 background: '#ffffff',
                                 fontSize: '0.95rem',
                                 cursor: 'pointer'
@@ -286,7 +286,7 @@ export default function CourtCaseSearch() {
                             htmlFor="case-number" 
                             style={{ 
                                 display: 'block', 
-                                color: '#1e40af', 
+                                color: 'var(--navy)', 
                                 marginBottom: '0.5rem', 
                                 fontSize: '0.9rem', 
                                 fontWeight: 600 
@@ -304,7 +304,7 @@ export default function CourtCaseSearch() {
                                 width: '100%', 
                                 padding: '0.6rem', 
                                 borderRadius: '6px', 
-                                border: '2px solid #bfdbfe',
+                                border: '2px solid var(--border-cool)',
                                 background: '#ffffff',
                                 fontSize: '0.95rem'
                             }}
@@ -319,7 +319,7 @@ export default function CourtCaseSearch() {
                             padding: '0.6rem 1.5rem',
                             borderRadius: '6px',
                             border: 'none',
-                            background: !loading && caseNumber.trim() ? '#3b82f6' : '#cbd5e1',
+                            background: !loading && caseNumber.trim() ? 'var(--navy)' : 'var(--border-cool)',
                             color: 'white',
                             fontWeight: 600,
                             cursor: !loading && caseNumber.trim() ? 'pointer' : 'not-allowed',
@@ -396,7 +396,7 @@ export default function CourtCaseSearch() {
                     {/* Entities (Parties) */}
                     {caseData.entities && caseData.entities.length > 0 && (
                         <div style={{ marginBottom: '1.5rem' }}>
-                            <h4 style={{ color: '#1e40af', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
+                            <h4 style={{ color: 'var(--navy)', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
                                 👥 Parties Involved
                             </h4>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
@@ -416,19 +416,19 @@ export default function CourtCaseSearch() {
                     {/* Hearings */}
                     {caseData.hearings && caseData.hearings.length > 0 && (
                         <div>
-                            <h4 style={{ color: '#1e40af', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
+                            <h4 style={{ color: 'var(--navy)', fontSize: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
                                 🗓 Hearing History ({caseData.hearings.length} hearings)
                             </h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                 {caseData.hearings.map((hearing) => (
-                                    <div key={hearing.id} style={{ padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #3b82f6' }}>
+                                    <div key={hearing.id} style={{ padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid var(--navy)' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                                             <div>
-                                                <span style={{ fontWeight: 600, color: '#1e40af' }}>{hearing.hearing_date_bs}</span>
+                                                <span style={{ fontWeight: 600, color: 'var(--navy)' }}>{hearing.hearing_date_bs}</span>
                                                 {hearing.hearing_date_ad && <span style={{ color: '#6b7280', fontSize: '0.85rem', marginLeft: '0.5rem' }}>({hearing.hearing_date_ad})</span>}
                                             </div>
                                             {hearing.case_status && (
-                                                <span style={{ background: '#dbeafe', color: '#1e40af', padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 600 }}>
+                                                <span style={{ background: 'var(--bg-tint)', color: 'var(--navy)', padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 600 }}>
                                                     {hearing.case_status}
                                                 </span>
                                             )}
@@ -458,7 +458,7 @@ export default function CourtCaseSearch() {
                     <details style={{ marginTop: '1.5rem' }}>
                         <summary style={{ 
                             cursor: 'pointer', 
-                            color: '#3b82f6', 
+                            color: 'var(--navy)', 
                             fontWeight: 600,
                             fontSize: '0.9rem'
                         }}>
