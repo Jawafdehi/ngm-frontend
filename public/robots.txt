@@ -1,0 +1,12 @@
+# NGM — Nepal Governance Modernization (a Jawafdehi platform)
+# https://ngm.jawafdehi.org
+
+User-agent: *
+Allow: /
+
+# This website's own pages:
+Sitemap: https://ngm.jawafdehi.org/sitemap.xml
+
+# The full open document archive — CIAA press releases & annual reports,
+# Kanun Patrika, court orders, and PPMO records — served from the NGM store:
+Sitemap: https://ngm-store.jawafdehi.org/sitemap.xml
