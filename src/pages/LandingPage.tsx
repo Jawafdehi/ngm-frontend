@@ -1,90 +1,81 @@
 import { Link } from 'react-router-dom';
 
+const CARDS: { icon: string; title: string; body: string; to: string; cta: string }[] = [
+  {
+    icon: '⚖️',
+    title: 'Court Cases',
+    body: "Search Nepal's Supreme, High, and District courts by case number for full case histories, hearings, and party information.",
+    to: '/search',
+    cta: 'Search cases',
+  },
+  {
+    icon: '📚',
+    title: 'Document Archive',
+    body: 'Browse CIAA press releases & annual reports, Kanun Patrika, court orders, and PPMO records — decades of the public record.',
+    to: '/browse',
+    cta: 'Open archive',
+  },
+  {
+    icon: '📂',
+    title: 'CIAA Cases',
+    body: 'Explore the structured CIAA corruption-case dataset by fiscal year — charge sheets, press releases, and appeal tracking.',
+    to: '/dataset',
+    cta: 'View dataset',
+  },
+  {
+    icon: '📡',
+    title: 'Pipeline Status',
+    body: 'Track per-court coverage and the health of the data pipeline across all 97 courts of Nepal.',
+    to: '/status',
+    cta: 'Check status',
+  },
+];
+
 export default function LandingPage() {
   return (
     <div className="fade-in">
       <section className="hero">
-        <h2>Nepal's Open Data Repository</h2>
+        <p className="hero-eyebrow">A Jawafdehi platform · Accountability for Nepal</p>
+        <h2>Nepal&apos;s public governance record, open to all.</h2>
         <p>
-          Accessible, searchable governance and judicial records — systematically
-          tracked from Nepal's institutional public endpoints. Built to empower
-          citizens, journalists, researchers, and accountability advocates.
+          NGM systematically collects, archives, and indexes Nepal&apos;s judicial and
+          governance records — making information that is legally public, but practically
+          inaccessible, searchable and citable for citizens, journalists, and researchers.
         </p>
       </section>
 
       <section className="landing-cards">
-        <div className="landing-card">
-          <div className="landing-card-icon">{'\ud83d\udccb'}</div>
-          <h3>Court Case Search</h3>
-          <p>
-            Search across all courts of Nepal — Supreme, High Courts, and
-            District Courts — by case number for detailed case histories,
-            hearings, and party information.
-          </p>
-          <Link to="/search" className="landing-card-link">
-            Search Cases &rarr;
-          </Link>
-        </div>
-
-        <div className="landing-card">
-          <div className="landing-card-icon">{'\ud83d\udcda'}</div>
-          <h3>Document Archive</h3>
-          <p>
-            Browse Kanun Patrika, CIAA Annual Reports, CIAA Press Releases,
-            and Court Orders spanning decades of Nepal's judicial record.
-          </p>
-          <Link to="/browse" className="landing-card-link">
-            Browse Archive &rarr;
-          </Link>
-        </div>
-
-        <div className="landing-card">
-          <div className="landing-card-icon">{'\ud83d\udcca'}</div>
-          <h3>Dataset Viewer</h3>
-          <p>
-            Explore the structured CIAA corruption cases dataset with
-            fiscal-year breakdowns, press releases, charge sheets, and
-            appeal tracking.
-          </p>
-          <Link to="/dataset" className="landing-card-link">
-            View Dataset &rarr;
-          </Link>
-        </div>
-
-        <div className="landing-card">
-          <div className="landing-card-icon">{'\ud83d\udce1'}</div>
-          <h3>Pipeline Status</h3>
-          <p>
-            Monitor per-court coverage and data pipeline health. Track which
-            Nepali courts are indexed and identify gaps in the archive.
-          </p>
-          <Link to="/status" className="landing-card-link">
-            Check Status &rarr;
-          </Link>
-        </div>
+        {CARDS.map((c) => (
+          <div className="landing-card" key={c.to}>
+            <div className="landing-card-icon">{c.icon}</div>
+            <h3>{c.title}</h3>
+            <p>{c.body}</p>
+            <Link to={c.to} className="landing-card-link">
+              {c.cta} &rarr;
+            </Link>
+          </div>
+        ))}
       </section>
 
       <section className="landing-about">
         <h3>About NGM</h3>
         <p>
-          <strong>Nepal Governance Modernization (NGM)</strong> is an open-data
-          initiative that systematically scrapes, archives, and indexes judicial
-          and governance records from Nepal's institutional public endpoints.
-          Our scrapers run continuously against the Supreme Court, Special Court,
-          all seven High Courts, and all 77 District Courts.
+          <strong>Nepal Governance Modernization (NGM)</strong> is an open-data platform that
+          scrapes, archives, and indexes judicial and governance records from Nepal&apos;s
+          institutional public endpoints — the Supreme Court, the Special Court, all High
+          Courts, and all 77 District Courts, alongside the CIAA, the PPMO, and the Kanun
+          Patrika legal gazette.
         </p>
         <p>
-          The goal is to make Nepal's judicial data discoverable, searchable,
-          and citable — empowering citizens, journalists, researchers, and
-          accountability advocates with structured access to information that is
-          legally public but practically inaccessible.
+          Every document keeps a link back to its official source, so anyone can verify it.
+          The archive is free, open, and citable — no paywalls, no sign-up.
         </p>
         <p>
-          NGM is a project of{' '}
+          NGM is one of the open civic platforms built by{' '}
           <a href="https://jawafdehi.org" target="_blank" rel="noopener noreferrer">
-            Jawafdehi.org
+            Jawafdehi
           </a>
-          , a non-profit open-governance platform.
+          , a volunteer-led, non-profit accountability initiative for Nepal.
         </p>
       </section>
     </div>

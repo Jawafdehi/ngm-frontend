@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from './DataTable';
-import CIAADatasetViewer from './CIAADatasetViewer';
-import CourtCaseSearch from './CourtCaseSearch';
 // TODO: Replace with backend metadata extraction when persons data is available
 import { containsPersonName } from '../data/casesData';
 
@@ -312,7 +310,6 @@ export default function IndexViewer() {
     const [rootError, setRootError] = useState<string | null>(null);
     const [tabErrors, setTabErrors] = useState<Record<TabKey, string | null>>({ kanun: null, ciaa: null, press: null, court: null, dataset: null, courtcases: null });
     const [activeTab, setActiveTab] = useState<TabKey>('kanun');
-    const [hasVisitedDataset, setHasVisitedDataset] = useState(false);
     const loadingRef = useRef<Set<TabKey>>(new Set());
     const abortControllersRef = useRef<Map<TabKey, AbortController>>(new Map());
     const hasAttemptedLoadRef = useRef<Set<TabKey>>(new Set());
@@ -1064,12 +1061,12 @@ export default function IndexViewer() {
                 background: '#f0f4ff', 
                 borderRadius: '12px', 
                 marginBottom: '1.5rem',
-                border: '2px solid #bfdbfe'
+                border: '2px solid var(--border-cool)'
             }}>
-                <h3 style={{ color: '#1e40af', marginBottom: '1rem', fontSize: '1.1rem' }}>🔍 Filter Court Records</h3>
+                <h3 style={{ color: 'var(--navy)', marginBottom: '1rem', fontSize: '1.1rem' }}>🔍 Filter Court Records</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '1rem', alignItems: 'end' }}>
                     <div>
-                        <label htmlFor="court-select" style={{ display: 'block', color: '#1e40af', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
+                        <label htmlFor="court-select" style={{ display: 'block', color: 'var(--navy)', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
                             Court * {loadingCourts && '(Loading...)'}
                         </label>
                         <select
@@ -1082,7 +1079,7 @@ export default function IndexViewer() {
                                 width: '100%', 
                                 padding: '0.6rem', 
                                 borderRadius: '6px', 
-                                border: '2px solid #bfdbfe',
+                                border: '2px solid var(--border-cool)',
                                 background: '#ffffff',
                                 fontSize: '0.95rem',
                                 cursor: 'pointer'
@@ -1096,7 +1093,7 @@ export default function IndexViewer() {
                         </select>
                     </div>
                     <div>
-                        <label htmlFor="start-year" style={{ display: 'block', color: '#1e40af', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
+                        <label htmlFor="start-year" style={{ display: 'block', color: 'var(--navy)', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
                             Start Year (BS) {loadingYears && '(Loading...)'}
                         </label>
                         <select
@@ -1107,7 +1104,7 @@ export default function IndexViewer() {
                                 width: '100%', 
                                 padding: '0.6rem', 
                                 borderRadius: '6px', 
-                                border: '2px solid #bfdbfe',
+                                border: '2px solid var(--border-cool)',
                                 background: '#ffffff',
                                 fontSize: '0.95rem',
                                 cursor: 'pointer'
@@ -1121,7 +1118,7 @@ export default function IndexViewer() {
                         </select>
                     </div>
                     <div>
-                        <label htmlFor="end-year" style={{ display: 'block', color: '#1e40af', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
+                        <label htmlFor="end-year" style={{ display: 'block', color: 'var(--navy)', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>
                             End Year (BS) {loadingYears && '(Loading...)'}
                         </label>
                         <select
@@ -1132,7 +1129,7 @@ export default function IndexViewer() {
                                 width: '100%', 
                                 padding: '0.6rem', 
                                 borderRadius: '6px', 
-                                border: '2px solid #bfdbfe',
+                                border: '2px solid var(--border-cool)',
                                 background: '#ffffff',
                                 fontSize: '0.95rem',
                                 cursor: 'pointer'
@@ -1155,7 +1152,7 @@ export default function IndexViewer() {
                             padding: '0.6rem 1.5rem',
                             borderRadius: '6px',
                             border: 'none',
-                            background: courtFilters.selectedCourt && !isLoading ? '#3b82f6' : '#cbd5e1',
+                            background: courtFilters.selectedCourt && !isLoading ? 'var(--navy)' : 'var(--border-cool)',
                             color: 'white',
                             fontWeight: 600,
                             cursor: courtFilters.selectedCourt && !isLoading ? 'pointer' : 'not-allowed',
@@ -1308,21 +1305,21 @@ export default function IndexViewer() {
                         style={{
                             padding: '0.5rem 1rem',
                             borderRadius: '6px',
-                            border: '2px solid #3b82f6',
+                            border: '2px solid var(--navy)',
                             background: 'white',
-                            color: '#3b82f6',
+                            color: 'var(--navy)',
                             fontWeight: 600,
                             cursor: 'pointer',
                             fontSize: '0.9rem',
                             transition: 'all 0.2s'
                         }}
                         onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#3b82f6';
+                            e.currentTarget.style.background = 'var(--navy)';
                             e.currentTarget.style.color = 'white';
                         }}
                         onMouseLeave={(e) => {
                             e.currentTarget.style.background = 'white';
-                            e.currentTarget.style.color = '#3b82f6';
+                            e.currentTarget.style.color = 'var(--navy)';
                         }}
                     >
                         ← New Search
@@ -1403,28 +1400,6 @@ export default function IndexViewer() {
                 >
                     Court Orders
                 </button>
-                <button
-                    id="dataset-tab"
-                    role="tab"
-                    aria-selected={activeTab === 'dataset'}
-                    aria-controls="dataset-panel"
-                    className={`tab-btn ${activeTab === 'dataset' ? 'active' : ''}`}
-                    onClick={() => {
-                        setActiveTab('dataset');
-                        setHasVisitedDataset(true);
-                    }}
-                >
-                    CIAA Cases Dataset
-                </button>
-                <button
-                    role="tab"
-                    aria-selected={activeTab === 'courtcases'}
-                    aria-controls="courtcases-panel"
-                    className={`tab-btn ${activeTab === 'courtcases' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('courtcases')}
-                >
-                    Court Cases
-                </button>
             </div>
 
             <div className="content-area">
@@ -1439,12 +1414,6 @@ export default function IndexViewer() {
                 </div>
                 <div id="court-panel" role="tabpanel" aria-labelledby="court-tab" hidden={activeTab !== 'court'}>
                     {activeTab === 'court' && renderCourtOrders()}
-                </div>
-                <div id="dataset-panel" role="tabpanel" aria-labelledby="dataset-tab" hidden={activeTab !== 'dataset'}>
-                    {hasVisitedDataset && <CIAADatasetViewer />}
-                </div>
-                <div id="courtcases-panel" role="tabpanel" aria-labelledby="courtcases-tab" hidden={activeTab !== 'courtcases'}>
-                    {activeTab === 'courtcases' && <CourtCaseSearch />}
                 </div>
             </div>
         </div>
